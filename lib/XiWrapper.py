@@ -13,15 +13,18 @@ logger.addHandler(logging.NullHandler())
 
 class XiSearchException(subprocess.CalledProcessError):
     def __init__(self, returncode, cmd, out_file, output=None):
-        subprocess.CalledProcessError.__init__(returncode, cmd, output)
+        subprocess.CalledProcessError.__init__(self, returncode, cmd, output)
         self.out_file = out_file
         pass
 
 
 class XiSearchOutOfMemoryException(XiSearchException):
-    def __init__(self, returncode, cmd, out_file, output=None):
-        XiSearchException.__init__(returncode, cmd, out_file, output)
+    def __init__(self, returncode, cmd, out_file, output):
+        XiSearchException.__init__(self, returncode, cmd, out_file, output)
         pass
+
+    def __str__(self):
+        return "Command '{:s}' produced java Memory Exception '{}'".format(self.cmd, self.output)
 
 
 class XiWrapper:
@@ -104,8 +107,7 @@ class XiWrapper:
         list_of_all_files.append(xi_path)
         for f in list_of_all_files:
             if not os.path.exists(f):
-                raise IOError("""Could not find specified file: {}
-                              Is the path correct?"""
+                raise IOError("Could not find specified file: '{}' Is the path correct?"
                               .format(f))
 
         if not os.path.exists(os.path.split(output_file)[0]):
@@ -142,7 +144,3 @@ class XiWrapper:
         logging.debug("Search execution took {} for cmd: {}"
                       .format(XiWrapper.calculate_elapsed_time(starttime), xi_cmd))
         return output_file
-
-
-# TODO: test what happens if xi exits with non zero exit code
-

@@ -24,17 +24,17 @@ logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
 
-class XiSearchException(subprocess.CalledProcessError):
-    def __init__(self, returncode, cmd, out_file, output=None):
-        subprocess.CalledProcessError.__init__(returncode, cmd, output)
-        self.out_file = out_file
-        pass
-
-
-class XiSearchOutOfMemoryException(XiSearchException):
-    def __init__(self, returncode, cmd, out_file, output=None):
-        XiSearchException.__init__(returncode, cmd, out_file, output)
-        pass
+# class XiSearchException(subprocess.CalledProcessError):
+#     def __init__(self, returncode, cmd, out_file, output=None):
+#         subprocess.CalledProcessError.__init__(returncode, cmd, output)
+#         self.out_file = out_file
+#         pass
+#
+#
+# class XiSearchOutOfMemoryException(XiSearchException):
+#     def __init__(self, returncode, cmd, out_file, output=None):
+#         XiSearchException.__init__(returncode, cmd, out_file, output)
+#         pass
 
 
 def setup_xi_logger(logger_name, log_file):
@@ -66,84 +66,84 @@ def calculate_elapsed_time(starttime):
 # print calculate_elapsed_time(starttime)
 
 
-def build_xi_arguments(xi_config, peak_files, fasta_files, memory, output, additional_parameters=()):
-    cmd = []
-    cmd.extend(["java", "-Xmx" + memory,
-                # deprecated native jave memory tracking
-                # "-XX:NativeMemoryTracking=detail",
-                # creates a memory dump on out of memory error
-                # "-XX:+HeapDumpOnOutOfMemoryError",
-                # kills process on out of memory error and displays message
-                # '-XX:OnOutOfMemoryError="echo OutOfMemory occured killing;kill %p"',
-                "-cp", "XiSearch.jar", "rappsilber.applications.Xi"])
-    # config
-    cmd.append("--config=" + xi_config)
-    # additional parameters
-    for par in additional_parameters:
-        cmd.append(par)
-    # peak_files
-    for peak_file in peak_files:
-        cmd.append("--peaks=" + peak_file)
-    # fasta_files
-    for fasta_file in fasta_files:
-        cmd.append("--fasta=" + fasta_file)
-    # output
-    cmd.append("--output=" + output)
-    return cmd
-
-# print build_xi_arguments("das_ist_die_cfg", ["erste_peaks", "zweite_peaks"], ["fasta1", "fasta2"], "hier_gehts_hin")
-# print build_xi_arguments("das_ist_die_cfg", ["zweite_peaks"], ["fasta1", "fasta2"], "hier_gehts_hin",
-#                          additional_parameters=["--xiconfig=TOPMATCHESONLY:true"])
-
-
-def xi_execution(xi_config, peak_files, fasta_files, memory, output_folder, additional_parameters=list()):
-    """
-    Calls Xi and gives back Xi result
-    Xi gives back a single csv file
-
-    Example cmd line:
-    # java -cp XiSearch.jar rappsilber.applications.Xi --conf=[path to config]
-    # --xiconfig=TOPMATCHESONLY:true --peaks=[path to peaklist1] --peaks=[path to peaklist2] --peaks=[path to peaklist3]
-    # --fasta=[path to fasta file1] --fasta=[path to fasta file2] --fasta=[path to fasta file3]
-    # --output=[path to result file]
-
-    :param xi_config: string
-    :param peak_files: list of strings
-    :param fasta_files: list of strings
-    :param output_folder: string
-    :param additional_parameters: list of strings
-    :return: string: output file name
-    """
-    assert type(peak_files) == type(fasta_files) == type(additional_parameters) == list, \
-        """type of the following files needs to be list. It is actually:
-        peak_files: {}
-        fasta_files: {}
-        additional_parameters: {}""".format(type(peak_files), type(fasta_files), type(additional_parameters))
-    # generate output_file name
-    output_file = os.path.join(output_folder, "xi_results.csv")  # filename example: "xi_results.csv"
-    # generate xi commands
-    xi_cmd = build_xi_arguments(xi_config, peak_files, fasta_files, memory, output_file, additional_parameters)
-    # call xi
-    logger.debug("xisearch arguments: {}".format(" ".join(map(str, xi_cmd))))
-    process = subprocess.Popen(xi_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    while True:
-        output = process.stdout.readline()
-        exit_code = process.poll()
-        if output == '' and exit_code is not None:
-            break
-        elif "java.lang.OutOfMemoryError" in output:
-            process.kill()
-            raise XiSearchOutOfMemoryException(returncode=1, cmd=xi_cmd, out_file=output_file, output=output)
-        if output:
-            # print output.strip()
-            logger.debug("XiSearch: " + output.strip())
-    if exit_code != 0:     # if process exit code is non zero
-        raise XiSearchException(exit_code, xi_cmd, output_file, 'XiSearch exited with error message!')
-    # try:
-    #     print subprocess.check_output(xi_cmd)
-    # except subprocess.CalledProcessError:
-    #     raise AttributeError('XiSearch exited with error message!')
-    return output_file
+# def build_xi_arguments(xi_config, peak_files, fasta_files, memory, output, additional_parameters=()):
+#     cmd = []
+#     cmd.extend(["java", "-Xmx" + memory,
+#                 # deprecated native jave memory tracking
+#                 # "-XX:NativeMemoryTracking=detail",
+#                 # creates a memory dump on out of memory error
+#                 # "-XX:+HeapDumpOnOutOfMemoryError",
+#                 # kills process on out of memory error and displays message
+#                 # '-XX:OnOutOfMemoryError="echo OutOfMemory occured killing;kill %p"',
+#                 "-cp", "XiSearch.jar", "rappsilber.applications.Xi"])
+#     # config
+#     cmd.append("--config=" + xi_config)
+#     # additional parameters
+#     for par in additional_parameters:
+#         cmd.append(par)
+#     # peak_files
+#     for peak_file in peak_files:
+#         cmd.append("--peaks=" + peak_file)
+#     # fasta_files
+#     for fasta_file in fasta_files:
+#         cmd.append("--fasta=" + fasta_file)
+#     # output
+#     cmd.append("--output=" + output)
+#     return cmd
+#
+# # print build_xi_arguments("das_ist_die_cfg", ["erste_peaks", "zweite_peaks"], ["fasta1", "fasta2"], "hier_gehts_hin")
+# # print build_xi_arguments("das_ist_die_cfg", ["zweite_peaks"], ["fasta1", "fasta2"], "hier_gehts_hin",
+# #                          additional_parameters=["--xiconfig=TOPMATCHESONLY:true"])
+#
+#
+# def xi_execution(xi_config, peak_files, fasta_files, memory, output_folder, additional_parameters=list()):
+#     """
+#     Calls Xi and gives back Xi result
+#     Xi gives back a single csv file
+#
+#     Example cmd line:
+#     # java -cp XiSearch.jar rappsilber.applications.Xi --conf=[path to config]
+#     # --xiconfig=TOPMATCHESONLY:true --peaks=[path to peaklist1] --peaks=[path to peaklist2] --peaks=[path to peaklist3]
+#     # --fasta=[path to fasta file1] --fasta=[path to fasta file2] --fasta=[path to fasta file3]
+#     # --output=[path to result file]
+#
+#     :param xi_config: string
+#     :param peak_files: list of strings
+#     :param fasta_files: list of strings
+#     :param output_folder: string
+#     :param additional_parameters: list of strings
+#     :return: string: output file name
+#     """
+#     assert type(peak_files) == type(fasta_files) == type(additional_parameters) == list, \
+#         """type of the following files needs to be list. It is actually:
+#         peak_files: {}
+#         fasta_files: {}
+#         additional_parameters: {}""".format(type(peak_files), type(fasta_files), type(additional_parameters))
+#     # generate output_file name
+#     output_file = os.path.join(output_folder, "xi_results.csv")  # filename example: "xi_results.csv"
+#     # generate xi commands
+#     xi_cmd = build_xi_arguments(xi_config, peak_files, fasta_files, memory, output_file, additional_parameters)
+#     # call xi
+#     logger.debug("xisearch arguments: {}".format(" ".join(map(str, xi_cmd))))
+#     process = subprocess.Popen(xi_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+#     while True:
+#         output = process.stdout.readline()
+#         exit_code = process.poll()
+#         if output == '' and exit_code is not None:
+#             break
+#         elif "java.lang.OutOfMemoryError" in output:
+#             process.kill()
+#             raise XiSearchOutOfMemoryException(returncode=1, cmd=xi_cmd, out_file=output_file, output=output)
+#         if output:
+#             # print output.strip()
+#             logger.debug("XiSearch: " + output.strip())
+#     if exit_code != 0:     # if process exit code is non zero
+#         raise XiSearchException(exit_code, xi_cmd, output_file, 'XiSearch exited with error message!')
+#     # try:
+#     #     print subprocess.check_output(xi_cmd)
+#     # except subprocess.CalledProcessError:
+#     #     raise AttributeError('XiSearch exited with error message!')
+#     return output_file
 
 # # Test Cases
 # xi_execution("Data/xi_config.cfg", ["Data/B161022_OCCM_BS3_Tryp_SECFr18-15_16_42-31_Oct_2016/B161022_07_Lumos_ML_IN_205_OCCM_BS3_Tryp_SECFr18.HCD.FTMS.peak.apl",
@@ -210,10 +210,16 @@ def fun_makedirs(list_of_dirs):
             os.makedirs(directory)
 
 
-def execute_pipeline(list_of_fasta_dbs, xi_config, peak_files, xi_memory='1G',  # xi settings
-                     output_basedir=".",  # optional general settings
-                     pepfdr="5", xifdr_memory="1G", reportfactor="10000", additional_xi_parameters=list(),  # optional xi settings
-                     additional_xifdr_arguments=list()):  # optional xifdr settings
+def execute_pipeline(
+        # mandatory xi settings
+        list_of_fasta_dbs, xi_config, peak_files,
+        # optional general settings
+        output_basedir=".",
+        # optional xi settings
+        xi_memory='1G', additional_xi_parameters=list(), xi_path="XiSearch.jar",
+        # optional xifdr settings
+        pepfdr="5", xifdr_memory="1G", reportfactor="10000",
+        additional_xifdr_arguments=list()):
     """
     This pipeline executes:
     xiSeqrch
@@ -223,8 +229,10 @@ def execute_pipeline(list_of_fasta_dbs, xi_config, peak_files, xi_memory='1G',  
         XiFDR result files: list of str
     """
     results_dict = {}
-    assert type(list_of_fasta_dbs) == list, \
-        "list_of_fasta_dbs must be of list type but is: {}".format(type(list_of_fasta_dbs))
+    assert type(list_of_fasta_dbs) in [list, str], \
+        "type of list_of_fasta_dbs must be 'list' or 'str' type but is: {}".format(type(list_of_fasta_dbs))
+    if type(list_of_fasta_dbs) == str:
+        list_of_fasta_dbs = [list_of_fasta_dbs]
     # base dirs for all the files
     pre_list_of_dirs = ["xi_output", "xifdr_output"]
     # generate necessary dirs for this run
@@ -233,15 +241,17 @@ def execute_pipeline(list_of_fasta_dbs, xi_config, peak_files, xi_memory='1G',  
         list_of_dirs.append(os.path.join(output_basedir, directory))
     fun_makedirs(list_of_dirs)
     # call xisearch
-    starttime = time.time()
-    xi_result = xi_execution(xi_config=xi_config,
-                             peak_files=peak_files,
-                             fasta_files=list_of_fasta_dbs,
-                             memory=xi_memory,
-                             output_folder=list_of_dirs[0],
-                             additional_parameters=additional_xi_parameters)
-    logger.info("xi search execution for '{}' took {}"
-                .format(list_of_dirs[0], calculate_elapsed_time(starttime)))
+    # starttime = time.time()
+    xi_result = XiWrapper.XiWrapper.xi_execution(
+        xi_path=xi_path,
+        xi_config=xi_config,
+        peak_files=peak_files,
+        fasta_files=list_of_fasta_dbs,
+        memory=xi_memory,
+        output_file=os.path.join(list_of_dirs[0], "xi_results.csv"),
+        additional_parameters=additional_xi_parameters)
+    # logger.info("xi search execution for '{}' took {}"
+    #             .format(list_of_dirs[0], calculate_elapsed_time(starttime)))
     # xi_result is a string but xifdr needs a list as input
     xifdr_input = [xi_result]
     # call xifdr
@@ -258,13 +268,24 @@ def execute_pipeline(list_of_fasta_dbs, xi_config, peak_files, xi_memory='1G',  
 
 
 # # Test cases
-# execute_pipeline(list_of_fasta_dbs=, xi_config, peak_files, xi_memory='1G',  # xi settings
-#                      output_basedir="test",  # optional general settings
-#                      pepfdr="5", xifdr_memory="1G", reportfactor="10000", additional_xi_parameters=list(),  # optional xi settings
-#                      additional_xifdr_arguments=list())
+if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='%(asctime)s - %(levelname)s - %(name)s - %(message)s'
+    )
+    execute_pipeline(
+        xi_path=r"../XiSearch.jar",
+        list_of_fasta_dbs=r"../Data/fasta_HomoSapiens_UP000005640_170306/uniprot.fasta",
+        xi_config=r"../Data/Fr14/xisearch_ribosome_10770.cfg",
+        peak_files=[r"../Data/Fr14/peak_files/B160805_05_Lumos_ML_IN_190_FOMix_Tryp_SEC_Fr14.HCD.FTMS.peak.apl",
+                    r"../Data/Fr14/peak_files/B160805_05_Lumos_ML_IN_190_FOMix_Tryp_SEC_Fr14.HCD.FTMS.sil0.apl"],
+        xi_memory='100M',  # xi settings
+        output_basedir="test",  # optional general settings
+        pepfdr="5", xifdr_memory="1G", reportfactor="10000", additional_xi_parameters=list(),  # optional xi settings
+        additional_xifdr_arguments=list())
 
-# # test cases
-# print fun_create_dir_for_experiment("testing", "occm", 5, "Ecoli", 7)
+    # # test cases
+    # print fun_create_dir_for_experiment("testing", "occm", 5, "Ecoli", 7)
 
 
 # TODO xifdr output ins log

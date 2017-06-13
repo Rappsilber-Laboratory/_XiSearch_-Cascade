@@ -10,6 +10,7 @@ import re
 import pandas as pd
 import numpy as np
 import subprocess
+from lib.XiWrapper import XiSearchOutOfMemoryException
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
@@ -289,7 +290,7 @@ def pipeline_execution(list_of_experiments, xi_xifdr_settings_dict, fasta_file, 
                     pepfdr=xi_xifdr_settings_dict['xifdr_settings']['pepfdr'],
                     reportfactor=xi_xifdr_settings_dict['xifdr_settings']['reportfactor'],
                     additional_xifdr_arguments=xi_xifdr_settings_dict['xifdr_settings']['additional_xifdr_arguments'])
-            except pipeline.XiSearchOutOfMemoryException as e:
+            except XiSearchOutOfMemoryException as e:
                 msg1 = "XiSearch produced a Memory Exception for cmd '{}'".format(e.cmd)
                 msg2 = "removing output stub '{}'".format(e.out_file)
                 logging.error(msg1)
