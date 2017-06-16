@@ -6,6 +6,7 @@ After each DB, Spactra satisfying a certain FDR have to be removed from the peak
 import logging
 from lib import pipeline
 import os
+import sys
 import re
 import pandas as pd
 import numpy as np
@@ -308,54 +309,75 @@ def pipeline_execution(list_of_experiments, xi_xifdr_settings_dict, fasta_file, 
 
 
 # METHOD: main
-# if __name__ == "__main__":
-#     logging.basicConfig(filename=__name__+'.log', level=logging.DEBUG,
-#                         format='%(asctime)s - %(levelname)s - %(name)s - %(message)s')
-#     list_of_experiments = []
-#
-#     Fr14 = Experiment(
-#         databases=[],
-#         list_of_peak_files=[r'Data/Fr14/peak_files/B160805_05_Lumos_ML_IN_190_FOMix_Tryp_SEC_Fr14.HCD.FTMS.peak.apl',
-#                             r'Data/Fr14/peak_files/B160805_05_Lumos_ML_IN_190_FOMix_Tryp_SEC_Fr14.HCD.FTMS.sil0.apl'],
-#         maxquant_result_file=r'Data/Fr14/Fr14_proteinGroups.txt',
-#         exp_name="Fr14")
-#     list_of_experiments += [Fr14]
-#
-#     Fr15 = Experiment(
-#         databases=[],
-#         list_of_peak_files=[r'Data/Fr15/peak_files/B160805_06_Lumos_ML_IN_190_FOMix_Tryp_SEC_Fr15.HCD.FTMS.peak.apl',
-#                             r'Data/Fr15/peak_files/B160805_06_Lumos_ML_IN_190_FOMix_Tryp_SEC_Fr15.HCD.FTMS.sil0.apl'],
-#         maxquant_result_file=r"Data/Fr15/proteinGroups.txt",
-#         exp_name="Fr15")
-#     list_of_experiments += [Fr15]
-#
-#     Fr16 = Experiment(
-#         databases=[],
-#         list_of_peak_files=[r'Data/Fr16/peak_files/B160805_07_Lumos_ML_IN_190_FOMix_Tryp_SEC_Fr16.HCD.FTMS.peak.apl',
-#                             r'Data/Fr16/peak_files/B160805_07_Lumos_ML_IN_190_FOMix_Tryp_SEC_Fr16.HCD.FTMS.sil0.apl'],
-#         maxquant_result_file=r"Data/Fr16/proteinGroups.txt",
-#         exp_name="Fr16")
-#     list_of_experiments += [Fr16]
-#
-#     fasta_base_file = r'Data/fasta_HomoSapiens_UP000005640_170306/uniprot.fasta'
-#     output_basedir = '../../Data/Results/170609_cascade_search/'
-#     xi_xifdr_settings_dict = {
-#         'xi_config': r'Data/Fr14/xisearch_ribosome_10770.cfg',  # same config file for all searches
-#         'xi_memory': '100G',
-#         'additional_xi_parameters': ["--xiconf=TOPMATCHESONLY:true", "--xiconf=MAXPEAKCANDIDATES:5000"],
-#         'xifdr_settings': {
-#             'pepfdr': "10",
-#             'additional_xifdr_arguments': [r"--lenghtgroups=4"],
-#             'reportfactor': "10000"
-#         }
-#     }
-#
-#     pipeline_execution(
-#         list_of_experiments=list_of_experiments,
-#         xi_xifdr_settings_dict=xi_xifdr_settings_dict,
-#         fasta_file=fasta_base_file,
-#         output_basedir=output_basedir)
-#     logging.shutdown()
+if __name__ == "__main__":
+    # print help message if script is called without argument
+    if len(sys.argv) <= 1:
+        print """Script has to be called with output dir as argument.
+            Output dir has to contain config file "config.py"."""
+        sys.exit(1)
+
+    # set output dir
+    output_basedir = sys.argv[1]
+
+    log_file = os.path.join(output_basedir, __name__ + '.log')
+
+    logging.basicConfig(filename=log_file, level=logging.DEBUG,
+                        format='%(asctime)s - %(levelname)s - %(name)s - %(message)s')
+
+    # import of config.py
+    sys.path.append(output_basedir)
+    import config
+
+    list_of_experiments = config.list_of_experiments
+    fasta_base_file = config.fasta_base_file
+    xi_xifdr_settings_dict = config.xi_xifdr_settings_dict
+
+
+    # list_of_experiments = []
+    #
+    # Fr14 = Experiment(
+    #     databases=[],
+    #     list_of_peak_files=[r'Data/Fr14/peak_files/B160805_05_Lumos_ML_IN_190_FOMix_Tryp_SEC_Fr14.HCD.FTMS.peak.apl',
+    #                         r'Data/Fr14/peak_files/B160805_05_Lumos_ML_IN_190_FOMix_Tryp_SEC_Fr14.HCD.FTMS.sil0.apl'],
+    #     maxquant_result_file=r'Data/Fr14/Fr14_proteinGroups.txt',
+    #     exp_name="Fr14")
+    # list_of_experiments += [Fr14]
+    #
+    # Fr15 = Experiment(
+    #     databases=[],
+    #     list_of_peak_files=[r'Data/Fr15/peak_files/B160805_06_Lumos_ML_IN_190_FOMix_Tryp_SEC_Fr15.HCD.FTMS.peak.apl',
+    #                         r'Data/Fr15/peak_files/B160805_06_Lumos_ML_IN_190_FOMix_Tryp_SEC_Fr15.HCD.FTMS.sil0.apl'],
+    #     maxquant_result_file=r"Data/Fr15/proteinGroups.txt",
+    #     exp_name="Fr15")
+    # list_of_experiments += [Fr15]
+    #
+    # Fr16 = Experiment(
+    #     databases=[],
+    #     list_of_peak_files=[r'Data/Fr16/peak_files/B160805_07_Lumos_ML_IN_190_FOMix_Tryp_SEC_Fr16.HCD.FTMS.peak.apl',
+    #                         r'Data/Fr16/peak_files/B160805_07_Lumos_ML_IN_190_FOMix_Tryp_SEC_Fr16.HCD.FTMS.sil0.apl'],
+    #     maxquant_result_file=r"Data/Fr16/proteinGroups.txt",
+    #     exp_name="Fr16")
+    # list_of_experiments += [Fr16]
+    #
+    # fasta_base_file = r'Data/fasta_HomoSapiens_UP000005640_170306/uniprot.fasta'
+    # output_basedir = '../../Data/Results/170609_cascade_search/'
+    # xi_xifdr_settings_dict = {
+    #     'xi_config': r'Data/Fr14/xisearch_ribosome_10770.cfg',  # same config file for all searches
+    #     'xi_memory': '100G',
+    #     'additional_xi_parameters': ["--xiconf=TOPMATCHESONLY:true", "--xiconf=MAXPEAKCANDIDATES:5000"],
+    #     'xifdr_settings': {
+    #         'pepfdr': "10",
+    #         'additional_xifdr_arguments': [r"--lenghtgroups=4"],
+    #         'reportfactor': "10000"
+    #     }
+    # }
+
+    pipeline_execution(
+        list_of_experiments=list_of_experiments,
+        xi_xifdr_settings_dict=xi_xifdr_settings_dict,
+        fasta_file=fasta_base_file,
+        output_basedir=output_basedir)
+    logging.shutdown()
 
 # TODO
 # save the databases in an initial step as attribute of each experiment
