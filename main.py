@@ -12,143 +12,10 @@ import pandas as pd
 import numpy as np
 import subprocess
 from lib.XiWrapper import XiSearchOutOfMemoryException
+from lib.iBAQ_FASTA_handler import IbaqExtraction, FastaHandler
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
-
-
-# OBJECT: IbaqExtraction:
-class IbaqExtraction:
-    """takes a MaxQuant results file and
-    returns a sorted list of tuples,
-    each tuple containing the protein identifier and the respective iBAQ value of the protein"""
-    def __init__(self, filename):
-        self.filename = filename
-        # pandas data frame that holds protein IDs and their iBAQ intensities, absolute and normalized
-        self.results = self.read_file()
-
-    def read_file(self):
-        # read MaxQuant result file with protein ID as index
-        raw_file = pd.read_table(self.filename, index_col=0)
-        raw_file[['Potential contaminant', "Reverse"]] = raw_file[['Potential contaminant', "Reverse"]].astype(str)
-        raw_file_wo_contaminants = raw_file[raw_file["Potential contaminant"] != "+"]
-        raw_file_wo_reverse = raw_file_wo_contaminants[raw_file_wo_contaminants["Reverse"] != "+"]
-        unsorted_results = pd.DataFrame(raw_file_wo_reverse["iBAQ"])
-        sorted_results = unsorted_results.sort_values(by='iBAQ', ascending=False)
-        # add column with logarithmic iBAQ values
-        sorted_results['logIBAQ'] = np.log(sorted_results['iBAQ'])
-        # add columns with normalized iBAQ values
-        sorted_results['normIBAQ'] = sorted_results['iBAQ'] / sorted_results['iBAQ'].max()
-        sorted_results['normlogIBAQ'] = sorted_results['logIBAQ'] / sorted_results['logIBAQ'].max()
-        return sorted_results
-
-    def split_up_protein_groups(self, list_to_clean):
-        cleaned_list_of_proteins = []
-        for element in list_to_clean:
-            cleaned_list_of_proteins.extend(element.split(';'))
-        return cleaned_list_of_proteins
-
-    def get_intensity_top_log_frac(self, fraction):
-        """returns a list of proteins of at least 'percentage' intensity of the maximum iBAQ value"""
-        if fraction == 0:   # to include '-inf' log values
-            list_of_proteins = self.results.index.tolist()
-        else:
-            top_frac = self.results[self.results['normlogIBAQ'] >= fraction]
-            list_of_proteins = top_frac.index.tolist()
-        # split single elements containing multiple proteins into multiple elements
-        cleaned_list_of_proteins = self.split_up_protein_groups(list_of_proteins)
-        return cleaned_list_of_proteins
-
-    def get_top_quant(self, quantile):
-        """returns a list of proteins that have an intensity >= the specified quantile"""
-        top_quant = self.results[self.results['iBAQ'] >= self.results.quantile(quantile)['iBAQ']]
-        top_quant = top_quant.index.tolist()
-        top_quant_list = self.split_up_protein_groups(top_quant)
-        return top_quant_list
-
-    # def visualization(self):
-    #     """histogram comparison of the different preprocessed iBAQ intensities"""
-    #     vals = self.results['normIBAQ']
-    #     logvals = self.results[self.results['normlogIBAQ'] >= 0]['normlogIBAQ']
-    #
-    #     plt.subplot(211)    # the first subplot in the first figure (figure consists of two rows)
-    #     # x-axis ends at the end of the values
-    #     # plt.xlim(0, 1)
-    #     plt.hist(vals)
-    #     # plt.xlabel('normalized intensity')
-    #     plt.ylabel('Frequency')
-    #     plt.title('normalized intensity')
-    #     plt.grid(True)
-    #
-    #     # get 2 rows, 1 column and fignum
-    #     plt.subplot(212)    # the second subplot in the first figure (figure consists of two rows)
-    #     # x-axis ends at the end of the values
-    #     # plt.xlim(0, 1)
-    #     # the histogram of the data
-    #     plt.hist(logvals)
-    #     plt.xlabel('normalized log intensity')
-    #     plt.ylabel('Frequency')
-    #     # plt.title('normalized logarithmic values')
-    #     plt.grid(True)
-    #
-    #     plt.show()
-
-
-# # test cases
-# ibaq_list = IbaqExtraction("MaxQuant_iBAQ_proteinGroups_test.txt")
-# print ibaq_list.results
-# protein_list = ibaq_list.get_intensity_top_log_frac(0.9)
-# print ibaq_list.get_intensity_top_log_frac(0)
-# print ibaq_list.normalized_results
-# dfgui.show(ibaq_list.results)
-# ibaq_list.visualization()
-# print ibaq_list.get_top_quant(0.5)
-
-
-class FastaHandler:
-    def __init__(self, fasta_filename):
-        self.filename = fasta_filename
-        self.dict = self.read_fasta()
-
-    def read_fasta(self):
-        """read self.filename fasta file into a dict with protein id as key and its sequence as value"""
-        mydict = {}
-        dict_key = ""
-        list_of_non_unique_ids = []
-        protein_not_in_mydict = False
-        protein_id_regex = re.compile(r'^>.*\|(.*)\|.*')
-        protein_seq_regex = re.compile(r'^[A-Za-z]\B')
-        with open(self.filename) as db:
-            for line in db.readlines():
-                protein_id_regex_hit = protein_id_regex.match(line)
-                protein_seq_regex_hit = protein_seq_regex.match(line)
-                if protein_id_regex_hit:
-                    dict_key = protein_id_regex_hit.group(1)
-                    if dict_key not in mydict.keys():
-                        mydict[dict_key] = ''
-                        protein_not_in_mydict = True
-                    else:
-                        list_of_non_unique_ids.append(dict_key)
-                        protein_not_in_mydict = False
-                elif protein_seq_regex_hit and protein_not_in_mydict:
-                    mydict[dict_key] += line.strip()
-        if not list_of_non_unique_ids:
-            print "no duplicates in fasta file '{}'".format(self.filename)
-        else:
-            print "Duplicates in fasta file '{}': \n{}".format(self.filename, list_of_non_unique_ids)
-        return mydict
-        # TODO
-        # put duplicate statement in log if no duplicates were found
-
-    def build_fasta(self, protein_id_list, filename):
-        with open(filename, 'w+') as f:
-            for protein_id in protein_id_list:
-                if protein_id in self.dict.keys():
-                    f.write('>' + protein_id + '\n')
-                    f.write(self.dict[protein_id] + '\n')
-                else:
-                    print "protein ID '{}' not in fasta file '{}'".format(protein_id, self.filename)
-                    logging.warning("protein ID '{}' not in fasta file '{}'".format(protein_id, self.filename))
 
 
 # OBJECT: Experiment: holds all the necessary settings for each Fraction/replicate
@@ -180,7 +47,7 @@ def xifdr_result_to_spectra_list(xifdr_results, out_file):
     """
     input_files = [s for s in xifdr_results if "_false_PSM_" in s]
     if len(input_files) > 1:
-        raise AttributeError("More than one candidate file in 'xifdr results'")
+        raise AttributeError("More than one candidate file in 'xifdr results' matching '*_false_PSM_*'")
     df = pd.read_csv(input_files[0])
     df = df[df["isDecoy"] == False]
     df = df.loc[:, ("run", "scan")]
@@ -251,6 +118,10 @@ def spectra_filter(csv_of_scans, peak_files, out_file, xisearch_path="XiSearch.j
 #                out_file="testing/filtered_peaks.mgf")
 
 
+def create_db(method, fasta_file, additional_params):
+    if method == 'relIbaq':
+
+
 # METHOD: pipeline(list_of_experiments, xi_xifdr_settings_dict, fasta_file, output_basedir):
 def pipeline_execution(list_of_experiments, xi_xifdr_settings_dict, fasta_file, output_basedir):
     for experiment in list_of_experiments:
@@ -260,6 +131,8 @@ def pipeline_execution(list_of_experiments, xi_xifdr_settings_dict, fasta_file, 
             db_res_dir = os.path.join(output_basedir, experiment.name, "DB_"+str(i))
             if not os.path.exists(db_res_dir):
                 os.makedirs(db_res_dir)
+
+            db = create_db(method, fasta_file, additional_params)
 
             # filter out matched spectra from peak files
             if i != 0:  # do not filter spectra for first iteration
@@ -281,7 +154,7 @@ def pipeline_execution(list_of_experiments, xi_xifdr_settings_dict, fasta_file, 
                     # optional general settings
                     output_basedir=db_res_dir,
                     # xi settings
-                    list_of_fasta_dbs=[fasta_file],
+                    list_of_fasta_dbs=[db],
                     xi_config=xi_xifdr_settings_dict['xi_config'],
                     peak_files=peak_files,
                     # optional xi settings
@@ -385,8 +258,4 @@ if __name__ == "__main__":
 # initialize each experiment with the necessary parameters
 #   parameters include the databases to search on
     # TODO do the DBs differ for each Fraction or can we generalize by just giving parameters for DB creation?
-# store basic xi and xifdr settings
-# execute pipeline
 # TODO adjust paths to new data structure
-# implement XiWrapper in pipeline
-# use config files for parameters

@@ -24,7 +24,8 @@ class XiSearchOutOfMemoryException(XiSearchException):
         pass
 
     def __str__(self):
-        return "Command '{:s}' produced java Memory Exception '{}'".format(self.cmd, self.output)
+        return "Command '{:s}' produced java Memory Exception '{}'. You might want to remove the result stub."\
+            .format(self.cmd, self.output)
 
 
 class XiWrapper:

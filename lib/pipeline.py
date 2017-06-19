@@ -228,7 +228,6 @@ def execute_pipeline(
         Xi result file: str
         XiFDR result files: list of str
     """
-    results_dict = {}
     assert type(list_of_fasta_dbs) in [list, str], \
         "type of list_of_fasta_dbs must be 'list' or 'str' type but is: {}".format(type(list_of_fasta_dbs))
     if type(list_of_fasta_dbs) == str:
