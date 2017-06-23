@@ -197,6 +197,8 @@ class XiFdrWrapper:
         list_of_results = []
         if type(xifdr_input_csv) == str:
             xifdr_input_csv = [xifdr_input_csv]
+        if not os.path.exists(xifdr_output_dir):
+            os.makedirs(xifdr_output_dir)
         starttime = time.time()
         # TODO funzt das auch, wenn man die Klasse mit nem Alias laed? Ich haette lieber etwas mit 'self.'
         # TODO check whether @classmethod can do this
