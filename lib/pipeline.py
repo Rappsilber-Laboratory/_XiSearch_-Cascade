@@ -195,11 +195,28 @@ class XiFdrWrapper:
         :return:
         """
         list_of_results = []
+        starttime = time.time()
         # TODO funzt das auch, wenn man die Klasse mit nem Alias laed? Ich haette lieber etwas mit 'self.'
+        # TODO check whether @classmethod can do this
         xifdr_cmd = XiFdrWrapper.build_xifdr_arguments(xifdr_input_csv, xifdr_output_dir, pepfdr, memory, reportfactor,
                                                        additional_xifdr_arguments)
         logger.debug("xifdr arguments: {}".format(" ".join(map(str, xifdr_cmd))))
-        subprocess.check_output(xifdr_cmd)
+        # # # # #
+        process = subprocess.Popen(xifdr_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        # real time output of Xi messages
+        while True:
+            output = process.stdout.readline()
+            exit_code = process.poll()
+            if output == '' and exit_code is not None:
+                break
+            if output:
+                # print output.strip()
+                logging.debug("XiFdr: " + output.strip())
+        if exit_code != 0:  # if process exit code is non zero
+            raise subprocess.CalledProcessError(exit_code, xifdr_cmd)
+        logging.debug("Search execution took {} for cmd: {}"
+                      .format(calculate_elapsed_time(starttime), xifdr_cmd))
+        # # # # #
         for rel_dir, sub_dirs, files in os.walk(xifdr_output_dir):
             list_of_results = [os.path.join(rel_dir, f) for f in files]
         return list_of_results
@@ -292,5 +309,4 @@ if __name__ == "__main__":
     # print fun_create_dir_for_experiment("testing", "occm", 5, "Ecoli", 7)
 
 
-# TODO xifdr output ins log
 # todo Annahme der Argumente ueber die commandline
