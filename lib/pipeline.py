@@ -154,52 +154,55 @@ def calculate_elapsed_time(starttime):
 # xi_cmd = ["java", "-cp", "XiSearch.jar", "-Xmx1G", "rappsilber.applications.Xi", "--help"]
 # print subprocess.check_output(xi_cmd)
 
+class XiFdrWrapper:
+    def __init__(self):
+        pass
 
-def build_xifdr_arguments(fdr_input_csv, fdr_output_dir, pepfdr, memory="1G", reportfactor="10000",
-                          additional_xifdr_arguments=list(), xifdr_filename="xiFDRDB-1.0.14.34-jar-with-dependencies.jar"):
-    assert type(fdr_input_csv) == list, """type of fdr_input_csv needs to be list but is: {}""".format(type(fdr_input_csv))
-    # Example cmd line:
-    # java -Xmx1g -cp xiFDRDB-1.0.13.32-jar-with-dependencies.jar org.rappsilber.fdr.CSVinFDR --psmfdr=X --pepfdr=X
-    # --proteinfdr=X --reportfactor=X --linkfdr=X --ppifdr=X --csvOutDir=X --csvBaseName=X csv-file1 csv-file2
-    cmd = []
-    # memory
-    cmd.extend(["java", "-Xmx" + memory, "-cp", xifdr_filename,
-                "org.rappsilber.fdr.CSVinFDR", '--reportfactor='+reportfactor])
-    # pepfdr
-    cmd.append("--pepfdr=" + pepfdr)
-    # additional arguments
-    for par in additional_xifdr_arguments:
-        cmd.append(par)
-    # reportfactor
-    # taken into default config as it will probably never be changed
-    # cmd.append("--reportfactor=" + reportfactor)
-    # csvOutDir
-    cmd.append("--csvOutDir=" + fdr_output_dir)
-    # input csv
-    for i in fdr_input_csv:
-        cmd.append(i)
-    return cmd
+    @staticmethod
+    def build_xifdr_arguments(fdr_input_csv, fdr_output_dir, pepfdr, memory="1G", reportfactor="10000",
+                              additional_xifdr_arguments=list(), xifdr_filename="xiFDRDB-1.0.14.34-jar-with-dependencies.jar"):
+        assert type(fdr_input_csv) == list, """type of fdr_input_csv needs to be list but is: {}""".format(type(fdr_input_csv))
+        # Example cmd line:
+        # java -Xmx1g -cp xiFDRDB-1.0.13.32-jar-with-dependencies.jar org.rappsilber.fdr.CSVinFDR --psmfdr=X --pepfdr=X
+        # --proteinfdr=X --reportfactor=X --linkfdr=X --ppifdr=X --csvOutDir=X --csvBaseName=X csv-file1 csv-file2
+        cmd = []
+        # memory
+        cmd.extend(["java", "-Xmx" + memory, "-cp", xifdr_filename,
+                    "org.rappsilber.fdr.CSVinFDR", '--reportfactor='+reportfactor])
+        # pepfdr
+        cmd.append("--pepfdr=" + pepfdr)
+        # additional arguments
+        for par in additional_xifdr_arguments:
+            cmd.append(par)
+        # reportfactor
+        # taken into default config as it will probably never be changed
+        # cmd.append("--reportfactor=" + reportfactor)
+        # csvOutDir
+        cmd.append("--csvOutDir=" + fdr_output_dir)
+        # input csv
+        for i in fdr_input_csv:
+            cmd.append(i)
+        return cmd
 
-
-# print build_xifdr_arguments(["Xi_results.csv"], "xifdr_test", "5", "1G", "1000")
-
-def xifdr_execution(xifdr_input_csv, xifdr_output_dir, pepfdr="5", memory="1G", reportfactor="10000",
-                    additional_xifdr_arguments=list()):
-    """
-    takes XiSearch output and gives back fdr csv
-    :param xifdr_input_csv:
-    :param xifdr_output_dir:
-    :param additional_xifdr_arguments:
-    :return:
-    """
-    list_of_results = []
-    xifdr_cmd = build_xifdr_arguments(xifdr_input_csv, xifdr_output_dir, pepfdr, memory, reportfactor,
-                                      additional_xifdr_arguments)
-    logger.debug("xifdr arguments: {}".format(" ".join(map(str, xifdr_cmd))))
-    subprocess.check_output(xifdr_cmd)
-    for rel_dir, sub_dirs, files in os.walk(xifdr_output_dir):
-        list_of_results = [os.path.join(rel_dir, f) for f in files]
-    return list_of_results
+    @staticmethod
+    def xifdr_execution(xifdr_input_csv, xifdr_output_dir, pepfdr="5", memory="1G", reportfactor="10000",
+                        additional_xifdr_arguments=list()):
+        """
+        takes XiSearch output and gives back fdr csv
+        :param xifdr_input_csv:
+        :param xifdr_output_dir:
+        :param additional_xifdr_arguments:
+        :return:
+        """
+        list_of_results = []
+        # TODO funzt das auch, wenn man die Klasse mit nem Alias laed? Ich haette lieber etwas mit 'self.'
+        xifdr_cmd = XiFdrWrapper.build_xifdr_arguments(xifdr_input_csv, xifdr_output_dir, pepfdr, memory, reportfactor,
+                                                       additional_xifdr_arguments)
+        logger.debug("xifdr arguments: {}".format(" ".join(map(str, xifdr_cmd))))
+        subprocess.check_output(xifdr_cmd)
+        for rel_dir, sub_dirs, files in os.walk(xifdr_output_dir):
+            list_of_results = [os.path.join(rel_dir, f) for f in files]
+        return list_of_results
 
 
 def fun_makedirs(list_of_dirs):
@@ -255,12 +258,14 @@ def execute_pipeline(
     xifdr_input = [xi_result]
     # call xifdr
     starttime = time.time()
-    xifdr_results = xifdr_execution(xifdr_input_csv=xifdr_input,
-                                    xifdr_output_dir=list_of_dirs[1],
-                                    pepfdr=pepfdr,
-                                    memory=xifdr_memory,
-                                    reportfactor=reportfactor,
-                                    additional_xifdr_arguments=additional_xifdr_arguments)
+    xifdr_results = XiFdrWrapper.xifdr_execution(
+        xifdr_input_csv=xifdr_input,
+        xifdr_output_dir=list_of_dirs[1],
+        pepfdr=pepfdr,
+        memory=xifdr_memory,
+        reportfactor=reportfactor,
+        additional_xifdr_arguments=additional_xifdr_arguments
+    )
     logger.info("xifdr execution for '{}' took {}"
                 .format(list_of_dirs[1], calculate_elapsed_time(starttime)))
     return xi_result, xifdr_results
