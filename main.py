@@ -36,21 +36,33 @@ class Experiment:
         self.name = exp_name
 
 
-def xifdr_result_to_spectra_list(xifdr_results, out_file):
+def xifdr_result_to_spectra_df(xifdr_results):
     """
     takes a list of xifdr result files
     picks out the "_false_PSM_" file
     removes all entries containing decoys
-    writes column 2 and 3 to new csv-file
+    writes column "run" and "scan" to new DataFrame
     RETURN:
-        csv-file path
+        DataFrame containing run and scan of xifdr hits
     """
     input_files = [s for s in xifdr_results if "_false_PSM_" in s]
     if len(input_files) > 1:
         raise AttributeError("More than one candidate file in 'xifdr results' matching '*_false_PSM_*'")
     df = pd.read_csv(input_files[0])
+    # do not keep decoy hits
     df = df[df["isDecoy"] == False]
     df = df.loc[:, ("run", "scan")]
+    return df
+
+def xifdr_result_to_spectra_list_csv(xifdr_results, out_file):
+    """
+    takes a list of xifdr result files
+    calls xifdr_result_to_spectra_df with xifdr_results
+    writes returned DataFrame to csv-file
+    RETURN:
+        csv-file path
+    """
+    df = xifdr_result_to_spectra_df(xifdr_results)
     df.to_csv(out_file, index=False)
     return out_file
 
@@ -64,7 +76,7 @@ def xifdr_result_to_spectra_list(xifdr_results, out_file):
 #  '/home/henning/mnt/xitu/scripts/170323_Ribsome_IBAQ/results/with_MAXCANDIDATES/Fr14/0.9/xifdr_output/FDR_1.000_0.050_1.000_1.000_1.000_10000.000_false_Links_xiFDR1.0.14.csv',
 #  '/home/henning/mnt/xitu/scripts/170323_Ribsome_IBAQ/results/with_MAXCANDIDATES/Fr14/0.9/xifdr_output/FDR_1.000_0.050_1.000_1.000_1.000_10000.000_false_proteingroups_xiFDR1.0.14.csv']
 #
-# xifdr_result_to_spectra_list(
+# xifdr_result_to_spectra_list_csv(
 #     xifdr_results=result_files,
 #     out_file=r'testing/matched_spectra.csv'
 # )
@@ -138,7 +150,7 @@ def pipeline_execution(list_of_experiments, xi_xifdr_settings_dict, fasta_file, 
             if i != 0:  # do not filter spectra for first iteration
                 # assert that xifdr result list is not empty
                 assert xifdr_results, "This if condition should not be reached with empty 'xifdr_results'"
-                matched_spectra_list = xifdr_result_to_spectra_list(
+                matched_spectra_list = xifdr_result_to_spectra_list_csv(
                     xifdr_results=xifdr_results,
                     out_file=os.path.join(db_res_dir, "excluded_spectra.csv"))
                 peak_files = spectra_filter(
