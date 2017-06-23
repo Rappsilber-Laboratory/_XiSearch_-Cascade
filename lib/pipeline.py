@@ -195,6 +195,8 @@ class XiFdrWrapper:
         :return:
         """
         list_of_results = []
+        if type(xifdr_input_csv) == str:
+            xifdr_input_csv = [xifdr_input_csv]
         starttime = time.time()
         # TODO funzt das auch, wenn man die Klasse mit nem Alias laed? Ich haette lieber etwas mit 'self.'
         # TODO check whether @classmethod can do this
