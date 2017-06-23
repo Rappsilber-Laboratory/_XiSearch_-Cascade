@@ -184,7 +184,7 @@ def pipeline_execution(list_of_experiments, xi_xifdr_settings_dict, fasta_file, 
 # METHOD: main
 if __name__ == "__main__":
     # print help message if script is called without argument
-    if len(sys.argv) <= 1:
+    if len(sys.argv) != 1:
         print """Script has to be called with output dir as argument.
             Output dir has to contain config file "config.py"."""
         sys.exit(1)
