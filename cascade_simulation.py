@@ -143,9 +143,9 @@ def simulation_for_single_exp(ordered_list_of_xi_results, xifdr_settings_dict, o
         xifdr_results = XiFdrWrapper.xifdr_execution(
             xifdr_input_csv=xi_result,
             xifdr_output_dir=xifdr_out_dir,
-            pepfdr=xifdr_settings_dict['xifdr_settings']['pepfdr'],
-            reportfactor=xifdr_settings_dict['xifdr_settings']['reportfactor'],
-            additional_xifdr_arguments=xifdr_settings_dict['xifdr_settings']['additional_xifdr_arguments']
+            pepfdr=xifdr_settings_dict['pepfdr'],
+            reportfactor=xifdr_settings_dict['reportfactor'],
+            additional_xifdr_arguments=xifdr_settings_dict['additional_xifdr_arguments']
         )
         if remaining_ordered_list_of_xi_results:
             df_of_spectra_to_remove = xifdr_result_to_spectra_df(xifdr_results)
@@ -170,7 +170,7 @@ def exp_iterator(list_of_experiments, xifdr_settings_dict, out_dir, **kwargs):
                      .format(exp.name))
         starttime = time.time()
         simulation_for_single_exp(
-            ordered_list_of_xi_results=exp.ordered_tuple_of_xi_results,
+            ordered_list_of_xi_results=exp.ordered_list_of_xi_results,
             xifdr_settings_dict=xifdr_settings_dict,
             out_dir=exp_out_dir
         )
@@ -181,7 +181,7 @@ def exp_iterator(list_of_experiments, xifdr_settings_dict, out_dir, **kwargs):
 
 def main():
     # print help message if script is called without argument
-    if len(sys.argv) != 1:
+    if len(sys.argv) != 2:
         print """Script has to be called with output dir as argument.
                 Output dir has to contain config file "config.py"."""
         sys.exit(1)
@@ -191,15 +191,15 @@ def main():
 
     log_file = os.path.join(output_basedir, __name__ + '.log')
 
-    logging.basicConfig(filename=log_file, level=logging.DEBUG,
-                        format='%(asctime)s - %(levelname)s - %(name)s - %(message)s')
+    logger = logging.basicConfig(filename=log_file, level=logging.DEBUG,
+                                 format='%(asctime)s - %(levelname)s - %(name)s - %(message)s')
 
     # import of config.py
     sys.path.append(output_basedir)
     import myconfig
 
     list_of_experiment_dicts = myconfig.list_of_experiments
-    xi_xifdr_settings_dict = myconfig.xi_xifdr_settings_dict
+    xi_xifdr_settings_dict = myconfig.xifdr_settings_dict
 
     list_of_experiments = []
     for experiment_dict in list_of_experiment_dicts:
@@ -216,13 +216,10 @@ def main():
         xifdr_settings_dict=xi_xifdr_settings_dict,
         out_dir=output_basedir
     )
-    logging.info("Script executio took {}"
+    logging.info("Script execution took {}"
                  .format(calculate_elapsed_time(starttime)))
     logging.shutdown()
 
 
-
 if __name__ == "__main__":
     main()
-
-# TODO get ibaq_based_opt example config from xi-server
