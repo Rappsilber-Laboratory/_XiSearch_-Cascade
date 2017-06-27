@@ -12,6 +12,7 @@ from lib.pipeline import XiFdrWrapper, calculate_elapsed_time
 import logging
 import sys
 import time
+import re
 
 
 pd.options.display.max_rows = 999
@@ -72,9 +73,15 @@ def xifdr_result_to_spectra_df(xifdr_results):
     return df
 
 
-def remove_spectra_from_xi_results(df_of_spectra_to_remove, ordered_list_of_xi_results, xi_result_dir, **kwargs):
+def remove_spectra_from_xi_results(
+        df_of_spectra_to_remove,
+        lst_dct_ordered_xi,
+        xi_result_dir,
+        regex=r"/(0\.\d*)/",
+        **kwargs
+):
     df_fdr = df_of_spectra_to_remove
-    lst_xi_filtered = []
+    lst_dct_xi_filtered = []
 
     # read dtypes for xiresult files, either from from standard dtypes.csv, guess from standard xiresult.csv or from
         # provides xiresult.csv
@@ -87,14 +94,12 @@ def remove_spectra_from_xi_results(df_of_spectra_to_remove, ordered_list_of_xi_r
     #     dtypes = read_dtypes_from_file()
 
     # iterate over xi_results and filter out spectra to keep
-    for xi_result in ordered_list_of_xi_results:
+    for dct_xi_result in lst_dct_ordered_xi:
+        xi_result = dct_xi_result['filename']
 
         # create subdir, named after specific dir, where xi_result is from
-        # read subdir out of filepath
-        filename = xi_result
-        for i in range(2):
-            filename = os.path.split(filename)[0]
-        subdir = os.path.split(filename)[1]
+        subdir = dct_xi_result['subdir']
+
         result_dir = os.path.join(xi_result_dir, subdir)
         result_file = os.path.join(result_dir, "xi_results.csv")
         if not os.path.exists(result_dir):
@@ -110,9 +115,9 @@ def remove_spectra_from_xi_results(df_of_spectra_to_remove, ordered_list_of_xi_r
         # raise Exception("pandas rounds floats from xi_results! Stop this!")
         # store xi_result_dataframe in csv in created subdir
         df_xi_filtered.to_csv(result_file, index=False)
-        lst_xi_filtered.append(result_file)
+        lst_dct_xi_filtered.append({'filename': result_file, 'subdir': subdir})
 
-    return lst_xi_filtered
+    return lst_dct_xi_filtered
 
 # # # Testing
 # df_fdr = xifdr_result_to_spectra_df([r"/home/henning/ownCloud/masterieren/Data/Results/170323_iBAQ_based_opt/RAW/with_MAXCANDIDATES/Fr14/0.9/xifdr_output/FDR_1.000_0.050_1.000_1.000_1.000_10000.000_false_PSM_xiFDR1.0.14.csv"])
@@ -124,18 +129,36 @@ def remove_spectra_from_xi_results(df_of_spectra_to_remove, ordered_list_of_xi_r
 # )
 
 
-def simulation_for_single_exp(ordered_list_of_xi_results, xifdr_settings_dict, out_dir, **kwargs):
+def simulation_for_single_exp(
+        lst_ordered_xi,
+        xifdr_settings_dict,
+        out_dir,
+        regex=r"/(0\.\d+)/",
+        **kwargs
+):
     # TODO what is this function doing? docstring
-    while ordered_list_of_xi_results:
-        """ordered_list_of_xi_results has to be ordered by increasing DB size"""
-        xi_result = ordered_list_of_xi_results[0]
-        remaining_ordered_list_of_xi_results = ordered_list_of_xi_results[1:]
+    lst_dct_ordered_xi = []
 
-        # read subdir out of filepath
-        filename = xi_result
+    # build list of dicts of xi-results with keys:
+    #   'file': xi_results
+    #   'subdir': xi_result-specific subdir
+    while lst_ordered_xi:
+        file_dict = {}
+        filename = lst_ordered_xi.pop(0)
+        file_dict['filename'] = filename
         for i in range(2):
             filename = os.path.split(filename)[0]
-        subdir = os.path.split(filename)[1]
+        file_dict['subdir'] = os.path.split(filename)[1]
+        lst_dct_ordered_xi.append(file_dict)
+
+    logging.debug("Xi Dictionary: {}".format(lst_dct_ordered_xi))
+    while lst_dct_ordered_xi:
+        """lst_ordered_xi has to be ordered by increasing DB size"""
+        dct_xi_result = lst_dct_ordered_xi.pop(0)
+
+        # read variables from dict
+        xi_result = dct_xi_result['filename']
+        subdir = dct_xi_result['subdir']
 
         # create dirname for this specific iteration of loop
         result_dir = os.path.join(out_dir, subdir)
@@ -147,19 +170,18 @@ def simulation_for_single_exp(ordered_list_of_xi_results, xifdr_settings_dict, o
             reportfactor=xifdr_settings_dict['reportfactor'],
             additional_xifdr_arguments=xifdr_settings_dict['additional_xifdr_arguments']
         )
-        if remaining_ordered_list_of_xi_results:
+        if lst_dct_ordered_xi:
             df_of_spectra_to_remove = xifdr_result_to_spectra_df(xifdr_results)
             xi_result_dir = os.path.join(result_dir, "xi_output")
-            logging.info("Filtering spectra not annotated in '{}'".format(xi_result))
+            logging.info("Filtering out spectra satisfying FDR in '{}'".format(xi_result))
             starttime = time.time()
-            remaining_ordered_list_of_xi_results = \
+            lst_dct_ordered_xi = \
                 remove_spectra_from_xi_results(
                     df_of_spectra_to_remove,
-                    remaining_ordered_list_of_xi_results,
+                    lst_dct_ordered_xi,
                     xi_result_dir
                 )
             logging.info("Spectra filtering took {}".format(calculate_elapsed_time(starttime)))
-        ordered_list_of_xi_results = remaining_ordered_list_of_xi_results
 
 
 def exp_iterator(list_of_experiments, xifdr_settings_dict, out_dir, **kwargs):
@@ -170,13 +192,34 @@ def exp_iterator(list_of_experiments, xifdr_settings_dict, out_dir, **kwargs):
                      .format(exp.name))
         starttime = time.time()
         simulation_for_single_exp(
-            ordered_list_of_xi_results=exp.ordered_list_of_xi_results,
+            lst_ordered_xi=exp.ordered_list_of_xi_results,
             xifdr_settings_dict=xifdr_settings_dict,
             out_dir=exp_out_dir
         )
         logging.info("Simulation for '{}' took {}"
                      .format(exp.name, calculate_elapsed_time(starttime)))
         # TODO integrate hand over of kwargs to simulation
+
+
+def logging_setup(log_file):
+
+    format = '%(asctime)s - %(levelname)s - %(name)s - %(message)s'
+    logging.basicConfig(filename=log_file, level=logging.DEBUG,
+                        format=format)
+    logger = logging.getLogger('')
+
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(name)s - %(message)s')
+
+    # file_handler = logging.FileHandler(log_file)
+    # file_handler.setFormatter(formatter)
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(formatter)
+
+    logger.setLevel(logging.DEBUG)
+
+    # logger.addHandler(file_handler)
+    logger.addHandler(stream_handler)
+    return logger
 
 
 def main():
@@ -189,10 +232,10 @@ def main():
     # set output dir
     output_basedir = sys.argv[1]
 
+    # set up logging
     log_file = os.path.join(output_basedir, __name__ + '.log')
-
-    logger = logging.basicConfig(filename=log_file, level=logging.DEBUG,
-                                 format='%(asctime)s - %(levelname)s - %(name)s - %(message)s')
+    global logger
+    logger = logging_setup(log_file=log_file)
 
     # import of config.py
     sys.path.append(output_basedir)
