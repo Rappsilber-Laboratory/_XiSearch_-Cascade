@@ -68,7 +68,7 @@ def xifdr_result_to_spectra_df(xifdr_results):
 
     df = pd.read_csv(input_files[0])
     # do not keep decoy hits
-    df = df[df["isDecoy"] == False]
+    df = df[~df["isDecoy"]]
     df = df.loc[:, ("run", "scan")]
     return df
 
@@ -77,7 +77,6 @@ def remove_spectra_from_xi_results(
         df_of_spectra_to_remove,
         lst_dct_ordered_xi,
         xi_result_dir,
-        regex=r"/(0\.\d*)/",
         **kwargs
 ):
     df_fdr = df_of_spectra_to_remove
@@ -113,6 +112,7 @@ def remove_spectra_from_xi_results(
         df_xi_filtered = df_xi[~(df_xi["Run"]+" "+df_xi["Scan"].map(str)).isin(df_fdr["run"]+" "+df_fdr["scan"].map(str))]
         logging.warning("Column 'OpenModWindow' occurs twice, second occurence is therefore renamed to 'OpenModWindow.1'")
         # raise Exception("pandas rounds floats from xi_results! Stop this!")
+
         # store xi_result_dataframe in csv in created subdir
         df_xi_filtered.to_csv(result_file, index=False)
         lst_dct_xi_filtered.append({'filename': result_file, 'subdir': subdir})
@@ -132,9 +132,7 @@ def remove_spectra_from_xi_results(
 def simulation_for_single_exp(
         lst_ordered_xi,
         xifdr_settings_dict,
-        out_dir,
-        regex=r"/(0\.\d+)/",
-        **kwargs
+        out_dir
 ):
     # TODO what is this function doing? docstring
     lst_dct_ordered_xi = []
@@ -203,21 +201,18 @@ def exp_iterator(list_of_experiments, xifdr_settings_dict, out_dir, **kwargs):
 
 def logging_setup(log_file):
 
-    format = '%(asctime)s - %(levelname)s - %(name)s - %(message)s'
+    str_format = '%(asctime)s - %(levelname)s - %(name)s - %(message)s'
     logging.basicConfig(filename=log_file, level=logging.DEBUG,
-                        format=format)
+                        format=str_format)
     logger = logging.getLogger('')
-
-    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(name)s - %(message)s')
-
-    # file_handler = logging.FileHandler(log_file)
-    # file_handler.setFormatter(formatter)
-    stream_handler = logging.StreamHandler()
-    stream_handler.setFormatter(formatter)
 
     logger.setLevel(logging.DEBUG)
 
-    # logger.addHandler(file_handler)
+    formatter = logging.Formatter(str_format)
+
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(formatter)
+
     logger.addHandler(stream_handler)
     return logger
 
