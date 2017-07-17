@@ -9,6 +9,7 @@ import pandas as pd
 import timeit
 import os
 from lib.pipeline import XiFdrWrapper, calculate_elapsed_time
+from lib.iBAQ_FASTA_handler import FastaHandler
 import logging
 import sys
 import time
@@ -73,12 +74,21 @@ def xifdr_result_to_spectra_df(xifdr_results):
     return df
 
 
-def remove_spectra_from_xi_results(
+def rm_xifdr_spectra_from_xi_results(
         df_of_spectra_to_remove,
         lst_dct_ordered_xi,
         xi_result_dir,
         **kwargs
 ):
+    """
+    Function that removes spectra specified in df_of_spectra_to_remove from all xi_results in lst_dct_ordered_xi
+
+    :param df_of_spectra_to_remove:
+    :param lst_dct_ordered_xi: untreated xi_results
+    :param xi_result_dir: output folder for treated xi_results
+    :param kwargs:
+    :return: list of dicts with cleaned xi_result files
+    """
     df_fdr = df_of_spectra_to_remove
     lst_dct_xi_filtered = []
 
@@ -121,11 +131,54 @@ def remove_spectra_from_xi_results(
 
 # # # Testing
 # df_fdr = xifdr_result_to_spectra_df([r"/home/henning/ownCloud/masterieren/Data/Results/170323_iBAQ_based_opt/RAW/with_MAXCANDIDATES/Fr14/0.9/xifdr_output/FDR_1.000_0.050_1.000_1.000_1.000_10000.000_false_PSM_xiFDR1.0.14.csv"])
-# remove_spectra_from_xi_results(
+# rm_xifdr_spectra_from_xi_results(
 #     df_of_spectra_to_remove=df_fdr,
 #     ordered_list_of_xi_results=[r"/home/henning/ownCloud/masterieren/Data/Results/170323_iBAQ_based_opt/RAW/with_MAXCANDIDATES/Fr14/0.9/xi_output/xi_results.csv"],
 #     xi_result_dir=r"test/xi_filtered",
 #     dtypes_csv_file=r"/home/henning/ownCloud/masterieren/Data/Results/170323_iBAQ_based_opt/RAW/with_MAXCANDIDATES/Fr14/0.9/xi_output/dtypes_object.csv"
+# )
+
+
+def rm_links_explainable_by_fasta(xi_result, fasta, result_dir):
+    """
+    removes peptide links from xi_result, where both precursor proteins are in fasta
+    :param xi_result:
+    :param fasta:
+    :param result_dir: where to write "xi_results.csv" to
+    :return: cleaned xi_result
+    """
+    fasta_object = FastaHandler(fasta_filename=fasta, re_id_pattern=r'^>(.*)$')
+    df_xi = pd.read_csv(xi_result, dtype='object', float_precision='high')
+    file_result = os.path.join(result_dir, "xi_results.csv")
+    file_dropped_scans = os.path.join(result_dir, "dropped_xi_results.csv")
+
+    def are_proteins_in_fasta(prot_a, prot_b):
+        if (type(prot_a) is str) and (type(prot_b) is str):
+            prot_a = prot_a.replace('REV_', '')
+            prot_b = prot_b.replace('REV_', '')
+            if (prot_a in fasta_object.dict) and (prot_b in fasta_object.dict):
+                return True
+        return False
+    # lst_rows_to_drop = []
+    ser_to_drop = pd.Series(index=df_xi.index, dtype='bool')
+    for index, row in df_xi.iterrows():
+        # lst_rows_to_drop.append(are_proteins_in_fasta(row['Protein1'], row['Protein2']))
+        ser_to_drop[index] = are_proteins_in_fasta(row['Protein1'], row['Protein2'])
+    logging.info("Dropped {} columns from xi_result '{}' that were entirely in fasta '{}'"
+                 .format(sum(ser_to_drop), xi_result, fasta))
+    df_xi_results_cleaned = df_xi[~ser_to_drop]
+    df_xi_results_dropped = df_xi[ser_to_drop]
+
+    df_xi_results_cleaned.to_csv(file_result, index=False)
+    df_xi_results_dropped.to_csv(file_dropped_scans, index=False)
+    return file_result
+
+# # # Testing
+# logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
+# rm_links_explainable_by_fasta(
+#     xi_result=r"/home/henning/mnt/xitu/Data/Results/170323_iBAQ_based_opt/170704-reviewed_fasta-majority_protein_ids-new_iBAQ/Fr16/Fr16/log_norm_-5.0/xi_output/xi_results.csv",
+#     fasta=r"/home/henning/mnt/xitu/Data/Results/170323_iBAQ_based_opt/170704-reviewed_fasta-majority_protein_ids-new_iBAQ/Fr16/Fr16/log_norm_-4.0/fasta.fasta",
+#     result_dir=r"test"
 # )
 
 
@@ -134,12 +187,17 @@ def simulation_for_single_exp(
         xifdr_settings_dict,
         out_dir
 ):
-    # TODO what is this function doing? docstring
+    """
+    Iterate over lst_ordered_xi, calculate FDR fopr each and remove spectra satisfying FDR from all following xiresults
+
+    """
     lst_dct_ordered_xi = []
+    dct_fasta = {}
 
     # build list of dicts of xi-results with keys:
-    #   'file': xi_results
+    #   'file': input xi_result file
     #   'subdir': xi_result-specific subdir
+    #   'fasta': xi_result-specific fasta
     while lst_ordered_xi:
         file_dict = {}
         filename = lst_ordered_xi.pop(0)
@@ -148,7 +206,9 @@ def simulation_for_single_exp(
         # split off everything after last "/" twice, afterwards take what is behind last "/" as subdir
         for i in range(2):
             filename = os.path.split(filename)[0]
-        file_dict['subdir'] = os.path.split(filename)[1]
+        subdir = os.path.split(filename)[1]
+        file_dict['subdir'] = subdir
+        dct_fasta[subdir] = os.path.join(filename, "fasta.fasta")
 
         lst_dct_ordered_xi.append(file_dict)
 
@@ -160,6 +220,7 @@ def simulation_for_single_exp(
         # read variables from dict
         xi_result = dct_xi_result['filename']
         subdir = dct_xi_result['subdir']
+        fasta = dct_fasta[subdir]
 
         # create dirname for this specific iteration of loop
         result_dir = os.path.join(out_dir, subdir)
@@ -171,17 +232,28 @@ def simulation_for_single_exp(
             reportfactor=xifdr_settings_dict['reportfactor'],
             additional_xifdr_arguments=xifdr_settings_dict['additional_xifdr_arguments']
         )
+
+        # execute if there are remaining xiresults
         if lst_dct_ordered_xi:
             df_of_spectra_to_remove = xifdr_result_to_spectra_df(xifdr_results)
             xi_result_dir = os.path.join(result_dir, "xi_output")
             logging.info("Filtering out spectra satisfying FDR in '{}'".format(xi_result))
             starttime = time.time()
             lst_dct_ordered_xi = \
-                remove_spectra_from_xi_results(
+                rm_xifdr_spectra_from_xi_results(
                     df_of_spectra_to_remove,
                     lst_dct_ordered_xi,
                     xi_result_dir
                 )
+
+            # remove matches that can entirely be explained with the current fasta from the next xi_result
+            fasta_filtered_xi_result_dir = os.path.join(xi_result_dir, "fasta_filtered")
+            lst_dct_ordered_xi[0]['filename'] = rm_links_explainable_by_fasta(
+                xi_result=lst_dct_ordered_xi[0]['filename'],
+                fasta=fasta,
+                result_dir=fasta_filtered_xi_result_dir
+            )
+
             logging.info("Spectra filtering took {}".format(calculate_elapsed_time(starttime)))
 
 
