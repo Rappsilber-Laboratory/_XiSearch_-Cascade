@@ -2,6 +2,8 @@
 # initiate object for each experiment
 list_of_experiments = []
 
+
+# experiment results have to be ordered by increasing DB size
 Fr14 = {
     'exp_name': "Fr14",
     'ordered_list_of_xi_results': [

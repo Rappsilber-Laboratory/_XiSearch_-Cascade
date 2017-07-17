@@ -144,9 +144,12 @@ def simulation_for_single_exp(
         file_dict = {}
         filename = lst_ordered_xi.pop(0)
         file_dict['filename'] = filename
+
+        # split off everything after last "/" twice, afterwards take what is behind last "/" as subdir
         for i in range(2):
             filename = os.path.split(filename)[0]
         file_dict['subdir'] = os.path.split(filename)[1]
+
         lst_dct_ordered_xi.append(file_dict)
 
     logging.debug("Xi Dictionary: {}".format(lst_dct_ordered_xi))
