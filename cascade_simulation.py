@@ -149,6 +149,9 @@ def rm_links_explainable_by_fasta(xi_result, fasta, result_dir):
     """
     fasta_object = FastaHandler(fasta_filename=fasta, re_id_pattern=r'^>(.*)$')
     df_xi = pd.read_csv(xi_result, dtype='object', float_precision='high')
+    
+    if not os.path.exists(result_dir):
+        os.makedirs(result_dir)
     file_result = os.path.join(result_dir, "xi_results.csv")
     file_dropped_scans = os.path.join(result_dir, "dropped_xi_results.csv")
 

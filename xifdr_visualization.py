@@ -319,7 +319,7 @@ def runner(file_location,
 
 if __name__ == "__main__":
     runner(
-        file_location=r"/home/henning/mnt/xitu/Data/Results/170323_iBAQ_based_opt/with_MAXCANDIDATES/Fr14/",
+        file_location=r"/home/henning/mnt/xitu/Data/Results/170626_cascade_search/170626_cascade_simulation-ON-iBAQ_with_MAXCANDIDATES/Fr16/",
         plot_title=r"""xiFDR peptide links as a function of fasta DB derived from iBAQ quantification (10% pepfdr)""",
         maxquant_result_file=r'/home/henning/mnt/xitu/Data/Input/170323_iBAQ_based_opt/Fr14/MaxQuant_results_Fr14_proteinGroups.txt'
     )
