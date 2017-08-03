@@ -188,10 +188,11 @@ def rm_links_explainable_by_fasta(xi_result, fasta, result_dir):
 def simulation_for_single_exp(
         lst_ordered_xi,
         xifdr_settings_dict,
-        out_dir
+        out_dir,
+        rm_links_explainable_by_prev_db=True
 ):
     """
-    Iterate over lst_ordered_xi, calculate FDR fopr each and remove spectra satisfying FDR from all following xiresults
+    Iterate over lst_ordered_xi, calculate FDR for each and remove spectra satisfying FDR from all following xiresults
 
     """
     lst_dct_ordered_xi = []
@@ -250,17 +251,18 @@ def simulation_for_single_exp(
                 )
 
             # remove matches that can entirely be explained with the current fasta from the next xi_result
-            fasta_filtered_xi_result_dir = os.path.join(xi_result_dir, "fasta_filtered")
-            lst_dct_ordered_xi[0]['filename'] = rm_links_explainable_by_fasta(
-                xi_result=lst_dct_ordered_xi[0]['filename'],
-                fasta=fasta,
-                result_dir=fasta_filtered_xi_result_dir
-            )
+            if rm_links_explainable_by_prev_db:
+                fasta_filtered_xi_result_dir = os.path.join(xi_result_dir, "fasta_filtered")
+                lst_dct_ordered_xi[0]['filename'] = rm_links_explainable_by_fasta(
+                    xi_result=lst_dct_ordered_xi[0]['filename'],
+                    fasta=fasta,
+                    result_dir=fasta_filtered_xi_result_dir
+                )
 
             logging.info("Spectra filtering took {}".format(calculate_elapsed_time(starttime)))
 
 
-def exp_iterator(list_of_experiments, xifdr_settings_dict, out_dir, **kwargs):
+def exp_iterator(list_of_experiments, xifdr_settings_dict, out_dir, rm_links_explainable_by_prev_db, **kwargs):
     for exp in list_of_experiments:
         # set output basedir for this experiment
         exp_out_dir = os.path.join(out_dir, exp.name)
@@ -270,7 +272,8 @@ def exp_iterator(list_of_experiments, xifdr_settings_dict, out_dir, **kwargs):
         simulation_for_single_exp(
             lst_ordered_xi=exp.ordered_list_of_xi_results,
             xifdr_settings_dict=xifdr_settings_dict,
-            out_dir=exp_out_dir
+            out_dir=exp_out_dir,
+            rm_links_explainable_by_prev_db=rm_links_explainable_by_prev_db
         )
         logging.info("Simulation for '{}' took {}"
                      .format(exp.name, calculate_elapsed_time(starttime)))
@@ -326,11 +329,19 @@ def main():
             )
         )
 
+    # setting for removal of links that are explainable by previous fasta DBs
+    try:
+        rm_links_explainable_by_prev_db = myconfig.rm_links_explainable_by_prev_db
+    except AttributeError:
+        rm_links_explainable_by_prev_db = True
+
+
     starttime = time.time()
     exp_iterator(
         list_of_experiments=list_of_experiments,
         xifdr_settings_dict=xi_xifdr_settings_dict,
-        out_dir=output_basedir
+        out_dir=output_basedir,
+        rm_links_explainable_by_prev_db=rm_links_explainable_by_prev_db
     )
     logging.info("Script execution took {}"
                  .format(calculate_elapsed_time(starttime)))
