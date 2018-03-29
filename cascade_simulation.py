@@ -5,6 +5,7 @@ This is done by carrying out a xifdr evaluation of the XiResults and removing sc
 FDR-conditions from all successive XiResults PSMs. This process is repeated for every successive XiResult.
 """
 
+import configparser
 import pandas as pd
 import timeit
 import os
@@ -24,9 +25,75 @@ class Experiment:
     """
     one object per MS analysis
     """
-    def __init__(self, ordered_list_of_xi_results, exp_name):
+    def __init__(
+            self,
+            ordered_list_of_xi_results,
+            exp_name,
+            ordered_list_of_fastas=None,
+            ordered_list_of_subdirs=None,
+            rm_links_explainable_by_prev_db=True
+    ):
         self.name = exp_name
+        self.rm_links_explainable_by_prev_db = rm_links_explainable_by_prev_db
         self.ordered_list_of_xi_results = ordered_list_of_xi_results
+        self.ordered_list_of_fastas = self.construct_ordered_list_of_fastas(ordered_list_of_fastas)
+        self.ordered_list_of_subdirs = self.construct_ordered_list_of_subdirs(ordered_list_of_subdirs)
+        self.all_files = self.ordered_list_of_xi_results + self.ordered_list_of_fastas
+
+    def construct_ordered_list_of_subdirs(self, ordered_list_of_subdirs):
+        if ordered_list_of_subdirs is None:
+            ordered_list_of_subdirs = list()
+            for f in self.ordered_list_of_xi_results:
+                # split off everything after last "/" twice, afterwards take what is behind last "/" as subdir
+                # for "/Data/Results/170323_iBAQ_based_opt/Ribosome/Ribosome/fasta_0.01/xi_output/xi_results.csv" this would
+                #   lead to "fasta_0.01" as subdir
+                for i in range(2):
+                    f = os.path.split(f)[0]
+                subdir = os.path.split(f)[1]
+                ordered_list_of_subdirs.append(subdir)
+            return ordered_list_of_subdirs
+        elif isinstance(ordered_list_of_subdirs, list):
+            if len(ordered_list_of_subdirs) == len(self.ordered_list_of_xi_results):
+                return ordered_list_of_subdirs
+            else:
+                raise AttributeError("ordered_list_of_subdirs must be of same length as ordered_list_of_xi_results")
+        else:
+            raise AttributeError("ordered_list_of_subdirs must be list or None but is type: {}"
+                                 .format(type(ordered_list_of_subdirs)))
+
+    def construct_ordered_list_of_fastas(self, ordered_list_of_fastas):
+        if (ordered_list_of_fastas is None) and (self.rm_links_explainable_by_prev_db is True):
+            ordered_list_of_fastas = list()
+            for filename in self.ordered_list_of_xi_results:
+                # split off everything after last "/" twice, afterwards take what is behind last "/" as subdir
+                # for "/Data/Results/170323_iBAQ_based_opt/Ribosome/Ribosome/fasta_0.01/xi_output/xi_results.csv" this would
+                #   lead to "fasta_0.01" as subdir
+                for i in range(2):
+                    filename = os.path.split(filename)[0]
+                subdir = os.path.split(filename)[1]
+                fasta = os.path.join(filename, "fasta.fasta")
+
+                ordered_list_of_fastas.append(fasta)
+
+            return ordered_list_of_fastas
+        elif isinstance(ordered_list_of_fastas, list) \
+                and (len(ordered_list_of_fastas) == len(self.ordered_list_of_xi_results)):
+            return ordered_list_of_fastas
+        elif self.rm_links_explainable_by_prev_db is False:
+            return list()
+        else:
+            raise AttributeError("ordered_list_of_fastas must be list or None but is type: {}"
+                                 .format(type(ordered_list_of_fastas)))
+
+    def check_files_exist(self):
+        lst_unfound_files = []
+        for f in self.all_files:
+            b = os.path.exists(f)
+            if not b:
+                lst_unfound_files.append(f)
+        if len(lst_unfound_files) > 0:
+            raise IOError("File(s) do(es) not exist: \n" + "\n".join(lst_unfound_files))
+        return True
 
 
 def guess_dtypes_of_columns(
@@ -61,11 +128,12 @@ def xifdr_result_to_spectra_df(xifdr_results):
     RETURN:
         DataFrame containing run and scan of xifdr hits
     """
-    input_files = [s for s in xifdr_results if "_false_PSM_" in s]
+    re_pattern = r"(false|true)_PSM_xiFDR"
+    input_files = [s for s in xifdr_results if re.search(re_pattern, s)]
     if len(input_files) > 1:
-        raise AttributeError("More than one candidate file in 'xifdr results' matching '*_false_PSM_*'")
+        raise AttributeError("More than one candidate file in 'xifdr results' matching regex '{}'".format(re_pattern))
     elif len(input_files) < 1:
-        raise AttributeError("No candidate file in 'xifdr results' matching '*_false_PSM_*'")
+        raise AttributeError("No candidate file in 'xifdr results' matching regex '{}'".format(re_pattern))
 
     df = pd.read_csv(input_files[0])
     # do not keep decoy hits
@@ -83,7 +151,8 @@ def rm_xifdr_spectra_from_xi_results(
     """
     Function that removes spectra specified in df_of_spectra_to_remove from all xi_results in lst_dct_ordered_xi
 
-    :param df_of_spectra_to_remove:
+    :param df_of_spectra_to_remove: pandas Dataframe with columns ["run", "scan"]. Column-scan-combination of each
+        row is removed from each xi_result in lst_dct_ordered_xi
     :param lst_dct_ordered_xi: untreated xi_results
     :param xi_result_dir: output folder for treated xi_results
     :param kwargs:
@@ -139,6 +208,53 @@ def rm_xifdr_spectra_from_xi_results(
 # )
 
 
+def rm_xifdr_spectra_from_xi_result(
+        df_of_spectra_to_remove,
+        xi_result,
+        xi_result_dir,
+        **kwargs
+):
+    """
+    Function that removes spectra specified in df_of_spectra_to_remove from all xi_results in lst_dct_ordered_xi
+
+    :param df_of_spectra_to_remove: pandas Dataframe with columns ["run", "scan"]. Column-scan-combination of each
+        row is removed from xi_result
+    :param xi_result: path to xi_result.csv which should be filtered
+    :param xi_result_dir: output folder for treated xi_results
+    :param subdir:
+    :param kwargs:
+    :return: list of dicts with cleaned xi_result files
+    """
+    df_fdr = df_of_spectra_to_remove
+
+    # read dtypes for xiresult files, either from from standard dtypes.csv, guess from standard xiresult.csv or from
+        # provides xiresult.csv
+    """dtypes is not respected as this leads to loss of precision compared to using dtype='object'"""
+    # if "dtypes_csv_file" in kwargs.keys():
+    #     dtypes = read_dtypes_from_file(kwargs["dtypes_csv_file"])
+    # elif "csv_to_guess_dtypes" in kwargs.keys():
+    #     dtypes = guess_dtypes_of_columns(kwargs["csv_to_guess_dtypes"])
+    # else:
+    #     dtypes = read_dtypes_from_file()
+    result_file = os.path.join(xi_result_dir, "xi_results.csv")
+    if not os.path.exists(xi_result_dir):
+        os.makedirs(xi_result_dir)
+
+    # read xi_result into pandas dataframe, respecting dtypes
+    df_xi = pd.read_csv(xi_result, dtype='object', float_precision='high')
+
+    # remove spectra specified by df_of_spectra_to_remove from xi_result_dataframe
+    logging.info("Filtering {}...".format(xi_result))
+    df_xi_filtered = df_xi[~(df_xi["Run"]+" "+df_xi["Scan"].map(str)).isin(df_fdr["run"]+" "+df_fdr["scan"].map(str))]
+    logging.warning("Column 'OpenModWindow' occurs twice, second occurence is therefore renamed to 'OpenModWindow.1'")
+    # raise Exception("pandas rounds floats from xi_results! Stop this!")
+
+    # store xi_result_dataframe in csv in created subdir
+    df_xi_filtered.to_csv(result_file, index=False)
+
+    return result_file
+
+
 def rm_links_explainable_by_fasta(xi_result, fasta, result_dir):
     """
     removes peptide links from xi_result, where both precursor proteins are in fasta
@@ -149,11 +265,6 @@ def rm_links_explainable_by_fasta(xi_result, fasta, result_dir):
     """
     fasta_object = FastaHandler(fasta_filename=fasta, re_id_pattern=r'^>(.*)$')
     df_xi = pd.read_csv(xi_result, dtype='object', float_precision='high')
-    
-    if not os.path.exists(result_dir):
-        os.makedirs(result_dir)
-    file_result = os.path.join(result_dir, "xi_results.csv")
-    file_dropped_scans = os.path.join(result_dir, "dropped_xi_results.csv")
 
     def are_proteins_in_fasta(prot_a, prot_b):
         if (type(prot_a) is str) and (type(prot_b) is str):
@@ -169,12 +280,23 @@ def rm_links_explainable_by_fasta(xi_result, fasta, result_dir):
         ser_to_drop[index] = are_proteins_in_fasta(row['Protein1'], row['Protein2'])
     logging.info("Dropped {} columns from xi_result '{}' that were entirely in fasta '{}'"
                  .format(sum(ser_to_drop), xi_result, fasta))
+    file_result, file_dropped_scans = write_cleaned_and_not_cleaned_xi_results(df_xi, result_dir, ser_to_drop)
+    return file_result
+
+
+def write_cleaned_and_not_cleaned_xi_results(df_xi, result_dir, ser_to_drop):
+    file_result = os.path.join(result_dir, "xi_results.csv")
+    file_dropped_scans = os.path.join(result_dir, "dropped_xi_results.csv")
+
+    if not os.path.exists(result_dir):
+        os.makedirs(result_dir)
+
     df_xi_results_cleaned = df_xi[~ser_to_drop]
     df_xi_results_dropped = df_xi[ser_to_drop]
-
     df_xi_results_cleaned.to_csv(file_result, index=False)
     df_xi_results_dropped.to_csv(file_dropped_scans, index=False)
-    return file_result
+    return file_result, file_dropped_scans
+
 
 # # # Testing
 # logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
@@ -185,52 +307,68 @@ def rm_links_explainable_by_fasta(xi_result, fasta, result_dir):
 # )
 
 
+def rm_links_entirely_unmodified(xi_result, result_dir, modifications=list(["Mox", "bs3"])):
+    """
+    Filter out xi-results that do not contain any of the specified modifications.
+
+    :param xi_result: path to xi_results.csv
+    :param result_dir: folder for filtered output xi_results.csv
+    :param modifications: list of modifications that should be dropped
+    :return:
+    """
+    df_xi = pd.read_csv(xi_result, dtype='object', float_precision='high')
+
+    # construct string of both Peptides, second has to be converted as it can be nan. This would lead to sum of strings
+    #    being nan, if not converted
+    s_pep_str = df_xi["Peptide1"] + df_xi["Peptide2"].astype(str)
+
+    regex_pattern = "|".join(modifications)
+    ser_to_drop = ~(s_pep_str.str.contains(regex_pattern))
+
+    file_result, file_dropped_scans = write_cleaned_and_not_cleaned_xi_results(df_xi, result_dir, ser_to_drop)
+
+    logging.info("Dropped {} columns from xi_result '{}' that were entirely unmodified"
+                 .format(sum(ser_to_drop), xi_result))
+
+    return file_result
+
+
 def simulation_for_single_exp(
-        lst_ordered_xi,
+        exp,
         xifdr_settings_dict,
         out_dir,
-        rm_links_explainable_by_prev_db=True
+        rm_links_explainable_by_prev_db=True,
+        unmod_mod_cascade=False
 ):
     """
     Iterate over lst_ordered_xi, calculate FDR for each and remove spectra satisfying FDR from all following xiresults
 
     """
-    lst_dct_ordered_xi = []
-    dct_fasta = {}
+    assert isinstance(rm_links_explainable_by_prev_db, bool), "rm_links_explainable_by_prev_db must be of type bool"
+    assert isinstance(unmod_mod_cascade, bool), "unmod_mod_cascade must be of type bool"
+    assert unmod_mod_cascade & rm_links_explainable_by_prev_db is not True, \
+        "unmod_mod_cascade and rm_links_explainable_by_prev_db are exclusive options."
 
     # build list of dicts of xi-results with keys:
     #   'file': input xi_result file
     #   'subdir': xi_result-specific subdir
     #   'fasta': xi_result-specific fasta
-    while lst_ordered_xi:
-        file_dict = {}
-        filename = lst_ordered_xi.pop(0)
-        file_dict['filename'] = filename
+    lst_dct_ordered_xi = build_lst_dct_ordered(exp)
 
-        # split off everything after last "/" twice, afterwards take what is behind last "/" as subdir
-        for i in range(2):
-            filename = os.path.split(filename)[0]
-        subdir = os.path.split(filename)[1]
-        file_dict['subdir'] = subdir
-        dct_fasta[subdir] = os.path.join(filename, "fasta.fasta")
-
-        lst_dct_ordered_xi.append(file_dict)
-
-    logging.debug("Xi Dictionary: {}".format(lst_dct_ordered_xi))
+    logging.debug("List of Xi dictionaries: {}".format(lst_dct_ordered_xi))
     while lst_dct_ordered_xi:
         """lst_ordered_xi has to be ordered by increasing DB size"""
-        dct_xi_result = lst_dct_ordered_xi.pop(0)
+        dct_xi_result_this_run = lst_dct_ordered_xi.pop(0)
 
         # read variables from dict
-        xi_result = dct_xi_result['filename']
-        subdir = dct_xi_result['subdir']
-        fasta = dct_fasta[subdir]
+        xi_result = dct_xi_result_this_run['filename']
+        subdir = dct_xi_result_this_run['subdir']
 
         # create dirname for this specific iteration of loop
         result_dir = os.path.join(out_dir, subdir)
         xifdr_out_dir = os.path.join(result_dir, "xifdr_output")
         xifdr_results = XiFdrWrapper.xifdr_execution(
-            xifdr_input_csv=xi_result,
+            xifdr_input_csv=[xi_result],
             xifdr_output_dir=xifdr_out_dir,
             pepfdr=xifdr_settings_dict['pepfdr'],
             reportfactor=xifdr_settings_dict['reportfactor'],
@@ -241,28 +379,74 @@ def simulation_for_single_exp(
         if lst_dct_ordered_xi:
             df_of_spectra_to_remove = xifdr_result_to_spectra_df(xifdr_results)
             xi_result_dir = os.path.join(result_dir, "xi_output")
-            logging.info("Filtering out spectra satisfying FDR in '{}'".format(xi_result))
+            logging.info("Filtering out spectra from following xi-results that satisfy FDR in '{}'".format(xi_result))
             starttime = time.time()
-            lst_dct_ordered_xi = \
-                rm_xifdr_spectra_from_xi_results(
-                    df_of_spectra_to_remove,
-                    lst_dct_ordered_xi,
-                    xi_result_dir
+
+            # rm spectra that passed fdr
+            new_lst_dct_ordered_xi = []
+            for xi_dct_unanalyzed in lst_dct_ordered_xi:
+                xi_res = xi_dct_unanalyzed['filename']
+                subdir = xi_dct_unanalyzed['subdir']
+                ith_xi_result_dir = os.path.join(xi_result_dir, "spectra_filtered", subdir)
+                xi_res_mod = rm_xifdr_spectra_from_xi_result(
+                    df_of_spectra_to_remove=df_of_spectra_to_remove,
+                    xi_result=xi_res,
+                    xi_result_dir=ith_xi_result_dir,
+                    subdir=subdir
                 )
+                xi_dct_unanalyzed['filename'] = xi_res_mod
+                new_lst_dct_ordered_xi.append(xi_dct_unanalyzed)
+
+            lst_dct_ordered_xi = new_lst_dct_ordered_xi
 
             # remove matches that can entirely be explained with the current fasta from the next xi_result
             if rm_links_explainable_by_prev_db:
+                fasta_already_searched = dct_xi_result_this_run['fasta']
                 fasta_filtered_xi_result_dir = os.path.join(xi_result_dir, "fasta_filtered")
+                next_xi_result = lst_dct_ordered_xi[0]['filename']
                 lst_dct_ordered_xi[0]['filename'] = rm_links_explainable_by_fasta(
-                    xi_result=lst_dct_ordered_xi[0]['filename'],
-                    fasta=fasta,
+                    xi_result=next_xi_result,
+                    fasta=fasta_already_searched,
                     result_dir=fasta_filtered_xi_result_dir
+                )
+
+            # remove entirely unmodified matches from search for modified and unmodified peptides
+            if unmod_mod_cascade:
+                modification_filtered_xi_result_dir = os.path.join(xi_result_dir, "modification_filtered")
+                next_xi_result = lst_dct_ordered_xi[0]['filename']
+                lst_dct_ordered_xi[0]['filename'] = rm_links_entirely_unmodified(
+                    xi_result=next_xi_result,
+                    result_dir=modification_filtered_xi_result_dir
                 )
 
             logging.info("Spectra filtering took {}".format(calculate_elapsed_time(starttime)))
 
 
-def exp_iterator(list_of_experiments, xifdr_settings_dict, out_dir, rm_links_explainable_by_prev_db, **kwargs):
+def build_lst_dct_ordered(exp):
+    lst_ordered_xi = list(exp.ordered_list_of_xi_results)
+    lst_ordered_fasta = list(exp.ordered_list_of_fastas)
+    lst_ordered_subdirs = list(exp.ordered_list_of_subdirs)
+
+    lst_dct_ordered_xi = []
+    save_fastas = len(lst_ordered_fasta) > 0
+
+    while lst_ordered_xi:
+        file_dict = {}
+        filename = lst_ordered_xi.pop(0)
+        file_dict['filename'] = filename
+
+        subdir = lst_ordered_subdirs.pop(0)
+        file_dict['subdir'] = subdir
+        if save_fastas:
+            fasta = lst_ordered_fasta.pop(0)
+            file_dict['fasta'] = fasta
+
+        lst_dct_ordered_xi.append(file_dict)
+    return lst_dct_ordered_xi
+
+
+def exp_iterator(list_of_experiments, xifdr_settings_dict, out_dir, rm_links_explainable_by_prev_db, unmod_mod_cascade,
+                 **kwargs):
     for exp in list_of_experiments:
         # set output basedir for this experiment
         exp_out_dir = os.path.join(out_dir, exp.name)
@@ -270,13 +454,14 @@ def exp_iterator(list_of_experiments, xifdr_settings_dict, out_dir, rm_links_exp
                      .format(exp.name))
         starttime = time.time()
         simulation_for_single_exp(
-            lst_ordered_xi=exp.ordered_list_of_xi_results,
+            exp=exp,
             xifdr_settings_dict=xifdr_settings_dict,
             out_dir=exp_out_dir,
-            rm_links_explainable_by_prev_db=rm_links_explainable_by_prev_db
+            rm_links_explainable_by_prev_db=rm_links_explainable_by_prev_db,
+            unmod_mod_cascade=unmod_mod_cascade
         )
-        logging.info("Simulation for '{}' took {}"
-                     .format(exp.name, calculate_elapsed_time(starttime)))
+        logging.info("Simulation for '{f}' took {t}"
+                     .format(f=exp.name, t=calculate_elapsed_time(starttime)))
         # TODO integrate hand over of kwargs to simulation
 
 
@@ -298,55 +483,166 @@ def logging_setup(log_file):
     return logger
 
 
-def main():
+def build_experiment_from_dict(experiment_dict, rm_links_explainable_by_prev_db, unmod_mod_cascade):
+    exp_name = experiment_dict['exp_name']
+    ordered_list_of_xi_results = experiment_dict['ordered_list_of_xi_results']
+    ordered_list_of_fastas = None
+    ordered_list_of_subdirs = None
+
+    if 'ordered_list_of_fastas' in experiment_dict.keys():
+        ordered_list_of_fastas = experiment_dict['ordered_list_of_fastas']
+        assert len(ordered_list_of_fastas) == len(ordered_list_of_xi_results), \
+            "Xi results and fasta files need to be of same number."
+
+    if "ordered_list_of_subdirs" in experiment_dict.keys():
+        ordered_list_of_subdirs = experiment_dict["ordered_list_of_subdirs"]
+        assert len(ordered_list_of_subdirs) == len(ordered_list_of_xi_results), \
+            "Xi results and subdirs must be of same number."
+    o_exp = Experiment(
+        exp_name=exp_name,
+        ordered_list_of_xi_results=ordered_list_of_xi_results,
+        ordered_list_of_fastas=ordered_list_of_fastas,
+        rm_links_explainable_by_prev_db=rm_links_explainable_by_prev_db,
+        ordered_list_of_subdirs=ordered_list_of_subdirs
+    )
+    return o_exp
+
+# # # Test
+# exp_dict = {
+#     'exp_name': "Ribosome",
+#     'ordered_list_of_xi_results': [
+#         r"/home/henning/mnt/xitu/Data/Results/170323_iBAQ_based_opt/Ribosome/Ribosome/fasta_0.01/xi_output/xi_results.csv",
+#         r"/home/henning/mnt/xitu/Data/Results/170323_iBAQ_based_opt/Ribosome/Ribosome/fasta_0.001/xi_output/xi_results.csv",
+#         r"/home/henning/mnt/xitu/Data/Results/170323_iBAQ_based_opt/Ribosome/Ribosome/fasta_0.0001/xi_output/xi_results.csv"
+#     ],
+#     'ordered_list_of_fastas': [
+#         r"/home/henning/mnt/xitu/Data/Input/170323_iBAQ_based_opt/fastas/180319-based_on_iBAQ/0.01.fasta",
+#         r"/home/henning/mnt/xitu/Data/Input/170323_iBAQ_based_opt/fastas/180319-based_on_iBAQ/0.001.fasta",
+#         r"/home/henning/mnt/xitu/Data/Input/170323_iBAQ_based_opt/fastas/180319-based_on_iBAQ/0.0001.fasta"
+#     ]
+# }
+# exp = build_experiment_from_dict(exp_dict)
+# exp.check_files_exist()
+
+
+def parse_config(config_file):
+    list_of_experiments = []
+    rm_links_explainable_by_prev_db = True
+    unmod_mod_cascade = False
+
+    config = configparser.ConfigParser()
+    config.read(config_file)
+
+    assert "xifdr settings" in config, "'xifdr settings' section must be in config file"
+    exp_keys = filter(lambda x: "Experiment" in x, config.sections())
+    assert len(exp_keys) >= 1, "You must specifiy at least one experiment"
+
+    # general section
+    if "general settings" in config:
+        if "rm_links_explainable_by_prev_db" in config["general settings"]:
+            rm_links_explainable_by_prev_db = config.getboolean("general settings", "rm_links_explainable_by_prev_db")
+        if "unmodified_vs_modified" in config["general settings"]:
+            unmod_mod_cascade = config.getboolean("general settings", "unmodified_vs_modified")
+
+    # xifdr settings
+    xifdr_settings_dict = {
+        'pepfdr': config["xifdr settings"]["pepfdr"],
+        'reportfactor': config["xifdr settings"]["reportfactor"]
+    }
+
+    if "additional xifdr arguments" in config:
+        xifdr_settings_dict["additional_xifdr_arguments"] = [
+            "--"+k+"="+v for k, v in config["additional xifdr arguments"].items()
+        ]
+
+    # Experiments
+    for key in exp_keys:
+        exp_sec_dct = config[key]
+        exp_dict = {
+            "exp_name": exp_sec_dct["name"]
+        }
+
+        lst_peak_keys = filter(lambda x: "peak_file_" in x, exp_sec_dct.keys())
+        lst_peak_files = [exp_sec_dct[f] for f in sorted(lst_peak_keys)]
+        exp_dict["ordered_list_of_xi_results"] = lst_peak_files
+
+        lst_fasta_keys = filter(lambda x: "fasta_file_" in x, exp_sec_dct.keys())
+        lst_fasta_files = [exp_sec_dct[f] for f in sorted(lst_fasta_keys)]
+        if len(lst_fasta_files) >= 1:
+            exp_dict["ordered_list_of_fastas"] = lst_fasta_files
+
+        lst_subdir_keys = filter(lambda x: "subdir_" in x, exp_sec_dct.keys())
+        lst_subdirs = [exp_sec_dct[f] for f in sorted(lst_subdir_keys)]
+        if len(lst_subdirs) >= 1:
+            exp_dict["ordered_list_of_subdirs"] = lst_subdirs
+
+        list_of_experiments.append(exp_dict)
+
+    return list_of_experiments, xifdr_settings_dict, rm_links_explainable_by_prev_db, unmod_mod_cascade
+
+
+def parse_cmd_line():
     # print help message if script is called without argument
     if len(sys.argv) != 2:
-        print """Script has to be called with output dir as argument.
-                Output dir has to contain config file "config.py"."""
+        print \
+            """
+            Script has to be called with config file as argument.
+            The directory of the config file will be the output dir.
+            """
         sys.exit(1)
+    return sys.argv[1]
+
+
+def main():
+    rel_config_file = parse_cmd_line()
+
+    main_execution(rel_config_file)
+
+
+def main_execution(rel_config_file):
+    config_file = os.path.abspath(rel_config_file)
+
+    list_of_experiment_dicts, xifdr_settings_dict, rm_links_explainable_by_prev_db, unmod_mod_cascade = \
+        parse_config(config_file)
 
     # set output dir
-    output_basedir = sys.argv[1]
-
+    out_dir = os.path.split(config_file)[0]
     # set up logging
-    log_file = os.path.join(output_basedir, __name__ + '.log')
-    global logger
-    logger = logging_setup(log_file=log_file)
-
-    # import of config.py
-    sys.path.append(output_basedir)
-    import myconfig
-
-    list_of_experiment_dicts = myconfig.list_of_experiments
-    xi_xifdr_settings_dict = myconfig.xifdr_settings_dict
+    log_file = os.path.join(out_dir, __name__ + '.log')
+    logging.basicConfig(filename=log_file, level=logging.DEBUG,
+                        format='%(asctime)s - %(levelname)s - %(name)s - %(message)s')
+    logger = logging.getLogger()
 
     list_of_experiments = []
     for experiment_dict in list_of_experiment_dicts:
         list_of_experiments.append(
-            Experiment(
-                exp_name=experiment_dict['exp_name'],
-                ordered_list_of_xi_results=experiment_dict['ordered_list_of_xi_results']
-            )
+            build_experiment_from_dict(experiment_dict, rm_links_explainable_by_prev_db, unmod_mod_cascade)
         )
+    for exp in list_of_experiments:
+        exp.check_files_exist()
 
-    # setting for removal of links that are explainable by previous fasta DBs
-    try:
-        rm_links_explainable_by_prev_db = myconfig.rm_links_explainable_by_prev_db
-    except AttributeError:
-        rm_links_explainable_by_prev_db = True
-
-
+    if unmod_mod_cascade:   # this works only with two xi_results
+        for exp in list_of_experiments:
+            assert len(exp.ordered_list_of_xi_results) == 2, \
+                ("For unmodified versus modified searches, you must specify 2 xi results:\n" +
+                 "\t 1. unmodified xiresult\n" +
+                 "\t 2. modified xiresult")
     starttime = time.time()
     exp_iterator(
         list_of_experiments=list_of_experiments,
-        xifdr_settings_dict=xi_xifdr_settings_dict,
-        out_dir=output_basedir,
-        rm_links_explainable_by_prev_db=rm_links_explainable_by_prev_db
+        xifdr_settings_dict=xifdr_settings_dict,
+        out_dir=out_dir,
+        rm_links_explainable_by_prev_db=rm_links_explainable_by_prev_db,
+        unmod_mod_cascade=unmod_mod_cascade
     )
-    logging.info("Script execution took {}"
+    logging.info("Execution of entire script took {}"
                  .format(calculate_elapsed_time(starttime)))
     logging.shutdown()
 
 
 if __name__ == "__main__":
     main()
+
+    # testing
+    # rel_config_file = r"/home/henning/mnt/xitu/Data/Results/170626_cascade_search/Ribosome/20180326-modified_unmodified/myconfig.ini"
+    # main_execution(rel_config_file)
