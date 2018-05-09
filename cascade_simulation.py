@@ -7,7 +7,6 @@ FDR-conditions from all successive XiResults PSMs. This process is repeated for 
 
 import configparser
 import pandas as pd
-import timeit
 import os
 from lib.pipeline import XiFdrWrapper, calculate_elapsed_time
 from lib.iBAQ_FASTA_handler import FastaHandler
