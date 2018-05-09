@@ -9,16 +9,13 @@ Output:
 XiFDR results
 """
 
-import os
-import subprocess
-import pandas as pd
-import sys  # Anzahl der Parameter beim Aufruf
-import argparse     # parsen von Befehlen aus der Kommandozeile
-import logging
-import time
 import datetime
-import XiWrapper
+import logging
+import os
+import time
 
+import XiWrapper
+from lib.XiFdrWrapper import XiFdrWrapper
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
@@ -56,9 +53,6 @@ def setup_xi_logger(logger_name, log_file):
 def calculate_elapsed_time(starttime):
     """ returns elapsed time since starttime in minutes """
     seconds = (time.time() - starttime)
-    # m, s = divmod(seconds, 60)
-    # h, m = divmod(m, 60)
-    # return "%d:%02d:%02d hours" % (h, m, s)
     return str(datetime.timedelta(seconds=seconds))
 
 # # test cases
@@ -154,77 +148,6 @@ def calculate_elapsed_time(starttime):
 # xi_cmd = ["java", "-cp", "XiSearch.jar", "-Xmx1G", "rappsilber.applications.Xi", "--help"]
 # print subprocess.check_output(xi_cmd)
 
-class XiFdrWrapper:
-    def __init__(self):
-        pass
-
-    @staticmethod
-    def build_xifdr_arguments(fdr_input_csv, fdr_output_dir, pepfdr, memory="1G", reportfactor="10000",
-                              additional_xifdr_arguments=list(), xifdr_filename="xiFDRDB-1.0.14.34-jar-with-dependencies.jar"):
-        assert type(fdr_input_csv) == list, """type of fdr_input_csv needs to be list but is: {}""".format(type(fdr_input_csv))
-        # Example cmd line:
-        # java -Xmx1g -cp xiFDRDB-1.0.13.32-jar-with-dependencies.jar org.rappsilber.fdr.CSVinFDR --psmfdr=X --pepfdr=X
-        # --proteinfdr=X --reportfactor=X --linkfdr=X --ppifdr=X --csvOutDir=X --csvBaseName=X csv-file1 csv-file2
-        cmd = []
-        # memory
-        cmd.extend(["java", "-Xmx" + memory, "-cp", xifdr_filename,
-                    "org.rappsilber.fdr.CSVinFDR", '--reportfactor='+reportfactor])
-        # pepfdr
-        cmd.append("--pepfdr=" + pepfdr)
-        # additional arguments
-        for par in additional_xifdr_arguments:
-            cmd.append(par)
-        # reportfactor
-        # taken into default config as it will probably never be changed
-        # cmd.append("--reportfactor=" + reportfactor)
-        # csvOutDir
-        cmd.append("--csvOutDir=" + fdr_output_dir)
-        # input csv
-        for i in fdr_input_csv:
-            cmd.append(i)
-        return cmd
-
-    @staticmethod
-    def xifdr_execution(xifdr_input_csv, xifdr_output_dir, pepfdr="5", memory="1G", reportfactor="10000",
-                        additional_xifdr_arguments=list()):
-        """
-        takes XiSearch output and gives back fdr csv
-        :param xifdr_input_csv:
-        :param xifdr_output_dir:
-        :param additional_xifdr_arguments:
-        :return:
-        """
-        list_of_results = []
-        if type(xifdr_input_csv) == str:
-            xifdr_input_csv = [xifdr_input_csv]
-        if not os.path.exists(xifdr_output_dir):
-            os.makedirs(xifdr_output_dir)
-        starttime = time.time()
-        # TODO funzt das auch, wenn man die Klasse mit nem Alias laed? Ich haette lieber etwas mit 'self.'
-        # TODO check whether @classmethod can do this
-        xifdr_cmd = XiFdrWrapper.build_xifdr_arguments(xifdr_input_csv, xifdr_output_dir, pepfdr, memory, reportfactor,
-                                                       additional_xifdr_arguments)
-        logger.debug("xifdr arguments: {}".format(" ".join(map(str, xifdr_cmd))))
-        # # # # #
-        process = subprocess.Popen(xifdr_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        # real time output of Xi messages
-        while True:
-            output = process.stdout.readline()
-            exit_code = process.poll()
-            if output == '' and exit_code is not None:
-                break
-            if output:
-                # print output.strip()
-                logging.debug("XiFdr: " + output.strip())
-        if exit_code != 0:  # if process exit code is non zero
-            raise subprocess.CalledProcessError(exit_code, xifdr_cmd)
-        logging.debug("Search execution took {} for cmd: {}"
-                      .format(calculate_elapsed_time(starttime), xifdr_cmd))
-        # # # # #
-        for rel_dir, sub_dirs, files in os.walk(xifdr_output_dir):
-            list_of_results = [os.path.join(rel_dir, f) for f in files]
-        return list_of_results
-
 
 def fun_makedirs(list_of_dirs):
     """ checks whether directory exists for each directory in list.
@@ -287,8 +210,8 @@ def execute_pipeline(
         reportfactor=reportfactor,
         additional_xifdr_arguments=additional_xifdr_arguments
     )
-    logger.info("xifdr execution for '{}' took {}"
-                .format(list_of_dirs[1], calculate_elapsed_time(starttime)))
+    # logger.info("xifdr execution for '{}' took {}"
+    #             .format(list_of_dirs[1], calculate_elapsed_time(starttime)))
     return xi_result, xifdr_results
 
 

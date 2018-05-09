@@ -17,6 +17,10 @@ class XiSearchException(subprocess.CalledProcessError):
         self.out_file = out_file
         pass
 
+    def __str__(self):
+        return "XiSearch command '{}' produced an error: '{}'"\
+            .format(" ".join(self.cmd), self.output)
+
 
 class XiSearchOutOfMemoryException(XiSearchException):
     def __init__(self, returncode, cmd, out_file, output):
@@ -25,7 +29,18 @@ class XiSearchOutOfMemoryException(XiSearchException):
 
     def __str__(self):
         return "Command '{:s}' produced java Memory Exception '{}'. You might want to remove the result stub."\
-            .format(self.cmd, self.output)
+            .format(" ".join(self.cmd), self.output)
+
+
+class XiSearchDaemoniseFailureException(XiSearchException):
+    def __init__(self, returncode, cmd, out_file, output):
+        XiSearchException.__init__(self, returncode, cmd, out_file, output)
+        pass
+
+    def __str__(self):
+        return "Command '{:s}' failed while writing result with following error: '{}'." + \
+               "The result file should be mostly complete though."\
+            .format(" ".join(self.cmd), self.output)
 
 
 class XiWrapper:
@@ -44,6 +59,10 @@ class XiWrapper:
 
     @staticmethod
     def build_xi_arguments(xi_path, xi_config, peak_files, fasta_files, memory, output, additional_parameters=()):
+        """
+        Example command (fastutil-version for mem-optimization has to match jave version):
+        java -cp XiSearch.jar:fastutil-8.1.0.jar rappsilber.applications.Xi --config=[path to config] --xiconf=TOPMATCHESONLY:true --peaks=[path to peaklist1] --peaks=[path to peaklist2] --peaks=[path to peaklist3] --fasta=[path to fasta file1] --fasta=[path to fasta file2] --fasta=[path to fasta file3] --output=[path to result file]
+        """
         cmd = ["java"]
 
         # memory
@@ -53,7 +72,17 @@ class XiWrapper:
                         ])
 
         # XiSearch jar
-        cmd.extend(["-cp", xi_path, "rappsilber.applications.Xi"])
+        cmd.extend([
+            "-cp"
+            , xi_path
+            # Win:
+            # + ";fastutil-7.2.1.jar"    # uncomment for java 7 mem optimization
+            # + ";fastutil-8.1.0.jar"    # uncomment for java 8 mem optimization
+            # linux:
+            + ":fastutil-7.2.1.jar"    # uncomment for java 7 mem optimization
+            # + ":fastutil-8.1.0.jar"    # uncomment for java 8 mem optimization
+            , "rappsilber.applications.Xi"
+        ])
 
         # config
         cmd.append("--config=" + xi_config)
@@ -126,7 +155,7 @@ class XiWrapper:
 
         # call xi
         starttime = time.time()
-        logging.debug("xisearch cmd: {}".format(" ".join(map(str, xi_cmd))))
+        logger.info("XiSearch cmd: {}".format(" ".join(map(str, xi_cmd))))
         process = subprocess.Popen(xi_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         # real time output of Xi messages
         while True:
@@ -134,14 +163,20 @@ class XiWrapper:
             exit_code = process.poll()
             if output == '' and exit_code is not None:
                 break
-            elif "java.lang.OutOfMemoryError" in output:
-                process.kill()
-                raise XiSearchOutOfMemoryException(returncode=1, cmd=xi_cmd, out_file=output_file, output=output)
-            if output:
+            elif output:
                 # print output.strip()
-                logging.debug("XiSearch: " + output.strip())
+                logger.debug("XiSearch: " + output.strip())
+                if "java.lang.OutOfMemoryError" in output:
+                    process.kill()
+                    raise XiSearchOutOfMemoryException(returncode=1, cmd=xi_cmd, out_file=output_file, output=output)
+                elif "could not daemonise BufferedResultWriter_batchforward" in output:
+                    process.kill()
+                    raise XiSearchDaemoniseFailureException(
+                        returncode=1, cmd=xi_cmd, out_file=output_file, output=output
+                    )
+
         if exit_code != 0:  # if process exit code is non zero
             raise XiSearchException(exit_code, xi_cmd, output_file, 'XiSearch exited with error message!')
-        logging.debug("Search execution took {} for cmd: {}"
-                      .format(XiWrapper.calculate_elapsed_time(starttime), xi_cmd))
+        logger.info("XiSearch execution took {} for cmd: {}"
+                    .format(XiWrapper.calculate_elapsed_time(starttime), xi_cmd))
         return output_file
