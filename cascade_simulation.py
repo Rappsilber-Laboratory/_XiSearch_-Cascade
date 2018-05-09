@@ -399,7 +399,8 @@ def simulation_for_single_exp(
             xifdr_output_dir=xifdr_out_dir,
             pepfdr=xifdr_settings_dict['pepfdr'],
             reportfactor=xifdr_settings_dict['reportfactor'],
-            additional_xifdr_arguments=xifdr_settings_dict['additional_xifdr_arguments']
+            additional_xifdr_arguments=xifdr_settings_dict['additional_xifdr_arguments'],
+            xifdr_filename=xifdr_settings_dict['executable']
         )
 
         # execute if there are remaining xiresults
@@ -592,6 +593,9 @@ def parse_config(config_file):
         'pepfdr': config["xifdr settings"]["pepfdr"],
         'reportfactor': config["xifdr settings"]["reportfactor"]
     }
+    xifdr_settings_dict["executable"] = config.get("xifdr settings", "executable location")
+    if not os.path.exists(xifdr_settings_dict["executable"]):
+        raise IOError("xiFDR executable not found under: \n\t{}".format(xifdr_settings_dict["executable"]))
 
     if "additional xifdr arguments" in config:
         xifdr_settings_dict["additional_xifdr_arguments"] = [
