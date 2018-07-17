@@ -18,9 +18,10 @@ import re
 g_allowed_modification = ["Mox", "bs3"]
 
 
-# OBJECT: Experiment: holds all the necessary settings for each Fraction/replicate
+
 class Experiment:
     """
+    holds all the necessary settings for each Fraction/replicate
     one object per MS analysis
     """
     def __init__(
@@ -31,11 +32,13 @@ class Experiment:
             ordered_list_of_subdirs=None,
             ordered_list_of_missing_modifications=None,
             rm_links_explainable_by_prev_db=True,
-            unmod_mod_cascade=False
+            unmod_mod_cascade=False,
+            search_result_fdr_reevaluation=False
     ):
         self.name = exp_name
         self.rm_links_explainable_by_prev_db = rm_links_explainable_by_prev_db
         self.unmod_mod_cascade = unmod_mod_cascade
+        self.search_result_fdr_reevaluation = search_result_fdr_reevaluation
         self.ordered_list_of_xi_results = ordered_list_of_xi_results
         self.ordered_list_of_fastas = self.construct_ordered_list_of_fastas(ordered_list_of_fastas)
         self.ordered_list_of_subdirs = self.construct_ordered_list_of_subdirs(ordered_list_of_subdirs)
@@ -370,6 +373,7 @@ def simulation_for_single_exp(
     """
     rm_links_explainable_by_prev_db = exp.rm_links_explainable_by_prev_db
     unmod_mod_cascade = exp.unmod_mod_cascade
+    search_result_fdr_reevaluation = exp.search_result_fdr_reevaluation
     assert isinstance(rm_links_explainable_by_prev_db, bool), "rm_links_explainable_by_prev_db must be of type bool"
     assert isinstance(unmod_mod_cascade, bool), "unmod_mod_cascade must be of type bool"
     assert unmod_mod_cascade & rm_links_explainable_by_prev_db is not True, \
@@ -382,6 +386,23 @@ def simulation_for_single_exp(
     lst_dct_ordered_xi = build_lst_dct_ordered(exp)
 
     logging.debug("List of Xi dictionaries: {}".format(lst_dct_ordered_xi))
+
+    if search_result_fdr_reevaluation:
+        reeval_dir = os.path.join(out_dir, "xifdr_reevaluation")
+        for d in lst_dct_ordered_xi:
+            xi_result = d['filename']
+            subdir = d['subdir']
+            result_dir = os.path.join(reeval_dir, subdir, "xifdr_output")
+            _ = XiFdrWrapper.xifdr_execution(
+                xifdr_input_csv=xi_result,
+                xifdr_output_dir=result_dir,
+                pepfdr=xifdr_settings_dict['pepfdr'],
+                reportfactor=xifdr_settings_dict['reportfactor'],
+                additional_xifdr_arguments=xifdr_settings_dict['additional_xifdr_arguments'],
+                xifdr_filename=xifdr_settings_dict['executable']
+            )
+
+    cas_dir = os.path.join(out_dir, "cascade")
     while lst_dct_ordered_xi:
         """lst_ordered_xi has to be ordered by increasing DB size"""
         dct_xi_result_this_run = lst_dct_ordered_xi.pop(0)
@@ -391,7 +412,7 @@ def simulation_for_single_exp(
         subdir = dct_xi_result_this_run['subdir']
 
         # create dirname for this specific iteration of loop
-        result_dir = os.path.join(out_dir, subdir)
+        result_dir = os.path.join(cas_dir, subdir)
         xifdr_out_dir = os.path.join(result_dir, "xifdr_output")
         xifdr_results = XiFdrWrapper.xifdr_execution(
             xifdr_input_csv=xi_result,
@@ -462,7 +483,7 @@ def build_lst_dct_ordered(exp):
     save_missing_mods = len(lst_ordered_missing_modifications) > 0
 
     while lst_ordered_xi:
-        file_dict = {}
+        file_dict = dict()
         file_dict['filename'] = lst_ordered_xi.pop(0)
 
         subdir = lst_ordered_subdirs.pop(0)
@@ -513,7 +534,8 @@ def logging_setup(log_file):
     return logger
 
 
-def build_experiment_from_dict(experiment_dict, rm_links_explainable_by_prev_db, unmod_mod_cascade):
+def build_experiment_from_dict(experiment_dict, rm_links_explainable_by_prev_db, unmod_mod_cascade,
+                               search_result_fdr_reevaluation):
     ordered_list_of_fastas = None
     ordered_list_of_subdirs = None
     ordered_list_of_missing_modifications = None
@@ -546,7 +568,8 @@ def build_experiment_from_dict(experiment_dict, rm_links_explainable_by_prev_db,
         ordered_list_of_subdirs=ordered_list_of_subdirs,
         ordered_list_of_missing_modifications=ordered_list_of_missing_modifications,
         rm_links_explainable_by_prev_db=rm_links_explainable_by_prev_db,
-        unmod_mod_cascade=unmod_mod_cascade
+        unmod_mod_cascade=unmod_mod_cascade,
+        search_result_fdr_reevaluation=search_result_fdr_reevaluation
     )
     return o_exp
 
@@ -572,6 +595,7 @@ def parse_config(config_file):
     list_of_experiments = []
     rm_links_explainable_by_prev_db = True
     unmod_mod_cascade = False
+    search_result_fdr_reevaluation = False
 
     config = configparser.ConfigParser()
     config.read(config_file)
@@ -586,13 +610,15 @@ def parse_config(config_file):
             rm_links_explainable_by_prev_db = config.getboolean("general settings", "rm_links_explainable_by_prev_db")
         if "unmodified_vs_modified" in config["general settings"]:
             unmod_mod_cascade = config.getboolean("general settings", "unmodified_vs_modified")
+        if "search_result_fdr_reevaluation" in config["general settings"]:
+            search_result_fdr_reevaluation = config.getboolean("general settings", "search_result_fdr_reevaluation")
 
     # xifdr settings
     xifdr_settings_dict = {
         'pepfdr': config["xifdr settings"]["pepfdr"],
         'reportfactor': config["xifdr settings"]["reportfactor"]
     }
-    xifdr_settings_dict["executable"] = config.get("xifdr settings", "executable location")
+    xifdr_settings_dict["executable"] = config.get("xifdr settings", "executable path")
     if not os.path.exists(xifdr_settings_dict["executable"]):
         raise IOError("xiFDR executable not found under: \n\t{}".format(xifdr_settings_dict["executable"]))
 
@@ -629,7 +655,8 @@ def parse_config(config_file):
 
         list_of_experiments.append(exp_dict)
 
-    return list_of_experiments, xifdr_settings_dict, rm_links_explainable_by_prev_db, unmod_mod_cascade
+    return list_of_experiments, xifdr_settings_dict, rm_links_explainable_by_prev_db, unmod_mod_cascade, \
+        search_result_fdr_reevaluation
 
 
 def parse_cmd_line():
@@ -653,8 +680,8 @@ def main():
 def main_execution(rel_config_file):
     config_file = os.path.abspath(rel_config_file)
 
-    list_of_experiment_dicts, xifdr_settings_dict, rm_links_explainable_by_prev_db, unmod_mod_cascade = \
-        parse_config(config_file)
+    list_of_experiment_dicts, xifdr_settings_dict, rm_links_explainable_by_prev_db, unmod_mod_cascade, \
+        search_result_fdr_reevaluation = parse_config(config_file)
 
     # set output dir
     out_dir = os.path.split(config_file)[0]
@@ -667,7 +694,8 @@ def main_execution(rel_config_file):
     list_of_experiments = []
     for experiment_dict in list_of_experiment_dicts:
         list_of_experiments.append(
-            build_experiment_from_dict(experiment_dict, rm_links_explainable_by_prev_db, unmod_mod_cascade)
+            build_experiment_from_dict(experiment_dict, rm_links_explainable_by_prev_db, unmod_mod_cascade,
+                                       search_result_fdr_reevaluation)
         )
     for exp in list_of_experiments:
         exp.check_files_exist()
