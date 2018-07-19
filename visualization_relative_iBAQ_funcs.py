@@ -458,12 +458,19 @@ def plot_multi_cascade_plot(dct_of_dfs, title="{}", xvals_column=""):
         labelbottom='on')  # labels along the bottom edge
 
 
-def plot_cascade_versus_seq(dct_df_cas, dct_df_seq):
+def plot_cascade_versus_seq(dct_df_cas, dct_df_seq, **kwargs):
+    """
+
+    :param dct_df_cas:
+    :param dct_df_seq:
+    :param kwargs: passed to figure creation
+    :return:
+    """
     xlim = []
     n_plots = len(dct_df_cas.keys())
-    fig = plt.figure()
-    axes = []
-    for i, sample in enumerate(sorted(dct_df_cas)):
+    fig, axes = plt.subplots(nrows=n_plots, sharex=True, **kwargs)
+    # axes = []
+    for ax, sample in zip(axes, sorted(dct_df_cas)):
         df_cas = dct_df_cas[sample]
         df_seq = dct_df_seq[sample]
 
@@ -471,7 +478,7 @@ def plot_cascade_versus_seq(dct_df_cas, dct_df_seq):
 
         # fig.SubplotParams(hspace=0.4)
         # ax = fig.add_subplot(n_plots, 1, i + 1)
-        ax = fig.add_subplot(1, n_plots, i + 1)
+        # ax = fig.add_subplot(1, n_plots, i + 1)
         # plt.subplots_adjust(hspace=0.4)
 
         width = 0.5 * 0.8 * (xvals[1] - xvals[0])
@@ -494,10 +501,10 @@ def plot_cascade_versus_seq(dct_df_cas, dct_df_seq):
         #     labelbottom='off'  # labels along the bottom edge are off
         # )
         if not xlim:
-            xlim = plt.xlim()
+            xlim = ax.get_xlim()
         if xlim:
-            plt.xlim(xlim)
-        axes.append(ax)
+            ax.set_xlim(xlim)
+        # axes.append(ax)
 
     # put ticks from subplot with maximum number of datapoint below figure
     n_rows_max = 0
@@ -596,3 +603,77 @@ def extract_fdr_results(lst_identifiers, xifdr_basedir, index_order=None, level=
         df = single_run_df(identifier, xifdr_basedir, index_order, level)
         dct_of_dfs[identifier] = df
     return dct_of_dfs
+
+
+def plot_barchart(df, tot_bar_width=0.9, ax=None, kind="vertical", *args, **kwargs):
+    flip_x_and_y = False
+    if kind == "horizontal":
+        flip_x_and_y = True
+    if ax is None:
+        ax = plt.gca()
+    single_bar_width = tot_bar_width / len(df["search type"].unique())
+    if kind == "vertical":
+        barkind="bar"
+    elif kind == "horizontal":
+        barkind = "barh"
+    else:
+        raise ValueError("kind must be 'vertical' or 'horizontal'")
+    df_perc = df.pivot(columns="search type", index="sample", values="perc")
+    df_perc = df_perc.iloc[:, ::-1]
+    ax = df_perc.plot(kind=barkind, width=tot_bar_width, ax=ax)
+    if flip_x_and_y:
+        ax.set_xlabel("[%]")
+    else:
+        ax.set_ylabel("[%]")
+
+    groups = df.groupby(["sample", "search type"])
+    for i, smpl in enumerate(df_perc.index):
+        for j, search in enumerate(df_perc.columns):
+            x_txt_pos = i - tot_bar_width / 2. + (j + 1) * single_bar_width - single_bar_width / 2.
+
+            # number of links
+            n = groups.get_group((smpl, search))["sum internal"].values[0]
+            height = df_perc.loc[smpl, search]
+            #             txt = r"n="+str(int(n))
+            txt = str(int(n))
+            xy = [x_txt_pos, height - 1]
+            ha = "center"
+            va = "top"
+            if flip_x_and_y:
+                xy = xy[::-1]
+                xy[0] = 2
+                ha = "left"
+                va = "center"
+            ax.text(x=xy[0], y=xy[1], s=txt, horizontalalignment=ha, verticalalignment=va, fontsize=10)
+
+            # gain %
+            if j > 0:
+                gain = ""
+                cas_perc = df_perc.loc[smpl, search]
+                cas_perc_gain = cas_perc - 100
+                if cas_perc_gain > 0:
+                    gain += "+"
+                gain += "{:.1f}%".format(cas_perc_gain)
+                xy = [x_txt_pos, cas_perc+1]
+                va = "bottom"
+                if flip_x_and_y:
+                    xy[1] = xy[1]-2
+                    xy = xy[::-1]
+                    ha = "right"
+                    va = "center"
+                ax.text(x=xy[0], y=xy[1], s=gain, horizontalalignment=ha, verticalalignment=va, fontsize=10)
+
+    if kind == "horizontal":
+        leg_pos = "upper left"
+        labels = [l.get_text() for l in ax.yaxis.get_ticklabels()]
+        ax.set_yticklabels(labels, va="center")
+        ax.set_ylabel("[fraction]")
+        # ax.yaxis.set_tick_params(rotation=90)
+    else:
+        leg_pos = "lower right"
+    ax.legend(loc=leg_pos, frameon=True)
+    ax.xaxis.set_tick_params(rotation=0)
+    ax.grid(b=False)
+    f = ax.get_figure()
+    f.tight_layout()
+    return f, ax
