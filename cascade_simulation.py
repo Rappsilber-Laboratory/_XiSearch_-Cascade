@@ -8,6 +8,8 @@ FDR-conditions from all successive XiResults PSMs. This process is repeated for 
 import configparser
 import pandas as pd
 import os
+
+from lib.FDR_funcs import count_missed_cleavage, g_enzyme_regex_dict
 from lib.pipeline import XiFdrWrapper, calculate_elapsed_time
 from lib.iBAQ_FASTA_handler import FastaHandler
 import logging
@@ -16,7 +18,6 @@ import time
 import re
 
 g_allowed_modification = ["Mox", "bs3"]
-
 
 
 class Experiment:
@@ -360,6 +361,58 @@ def rm_links_not_modified_by(xi_result, result_dir, modifications):
                  .format(sum(ser_to_drop), xi_result))
 
     return file_result
+
+
+# # # # Test
+# my_re = g_enzyme_regex_dict["trypsin"]
+# f_xi = r"file:///home/henning/ownCloud/masterieren/scripts/170421_cascade_search/test/dropped_xi_results.csv"
+# df_xi = pd.read_csv(f_xi, dtype='object', float_precision='high')
+#
+# df_cleav_count = pd.DataFrame()
+# df_cleav_count['Pep1'] = count_missed_cleavage(df_xi["Peptide1"], my_re)
+# df_cleav_count['Pep2'] = count_missed_cleavage(df_xi["Peptide2"], my_re)
+
+
+def rm_links_with_fewer_than_missed_cleavages(xi_result, result_dir, enzyme, no_missed_cleav):
+    """
+    Remove crosslinks from xi result if both peptides contain fewer than the specified number of missed cleavages
+    :param xi_result:
+    :param result_dir:
+    :param enzyme:
+    :param no_missed_cleav:
+    :return:
+    """
+
+    assert enzyme in g_enzyme_regex_dict, \
+        """Specified enzyme is not specified in global variable g_enzyme_regex_dict.
+        Allowed enzymes: {}""".format(g_enzyme_regex_dict.keys())
+
+    df_xi = pd.read_csv(xi_result, dtype='object', float_precision='high')
+    re_cleav = g_enzyme_regex_dict[enzyme]
+
+    s_pep1_cleav_count = count_missed_cleavage(df_xi["Peptide1"], re_cleav)
+    s_pep2_cleav_count = count_missed_cleavage(df_xi["Peptide2"], re_cleav)
+
+    ser_to_drop = (s_pep1_cleav_count < no_missed_cleav) & (s_pep2_cleav_count < no_missed_cleav)
+
+    file_result, file_dropped_scans = write_cleaned_and_not_cleaned_xi_results(df_xi, result_dir, ser_to_drop)
+
+    logging.info("Dropped {} rows from xi_result '{}' that were entirely unmodified"
+                 .format(sum(ser_to_drop), xi_result))
+
+    return file_result
+
+
+# # # Test
+# my_re = g_enzyme_regex_dict["trypsin"]
+# f_xi = r"file:///home/henning/mnt/xitu/Data/Results/170323_iBAQ_based_opt/Ribosome/180409-with_additional_precursors/Ribosome/fasta_0.001/xi_output/xi_results.csv"
+#
+# rm_links_with_fewer_than_missed_cleavages(
+#     f_xi,
+#     "test",
+#     "trypsin",
+#     2
+# )
 
 
 def simulation_for_single_exp(
