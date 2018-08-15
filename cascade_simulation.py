@@ -9,9 +9,9 @@ import configparser
 import pandas as pd
 import os
 
-from lib.FDR_funcs import count_missed_cleavage, g_enzyme_regex_dict
-from lib.pipeline import XiFdrWrapper, calculate_elapsed_time
-from lib.iBAQ_FASTA_handler import FastaHandler
+from xlSearchSpaceLibs.FDR_funcs import count_missed_cleavage, g_enzyme_regex_dict
+from xlSearchSpaceLibs.pipeline import XiFdrWrapper, calculate_elapsed_time
+from xlSearchSpaceLibs.iBAQ_FASTA_handler import FastaHandler
 import logging
 import sys
 import time
