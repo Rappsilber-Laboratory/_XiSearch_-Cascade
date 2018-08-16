@@ -10,7 +10,8 @@ import pandas as pd
 import os
 
 from xlSearchSpaceLibs.FDR_funcs import count_missed_cleavage, g_enzyme_regex_dict
-from xlSearchSpaceLibs.pipeline import XiFdrWrapper, calculate_elapsed_time
+from xlSearchSpaceLibs.pipeline import calculate_elapsed_time
+from xlSearchSpaceLibs.XiFdrWrapper import XiFdrWrapper
 from xlSearchSpaceLibs.iBAQ_FASTA_handler import FastaHandler
 import logging
 import sys
